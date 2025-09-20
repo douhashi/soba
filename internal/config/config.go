@@ -22,12 +22,12 @@ type GitHubConfig struct {
 }
 
 type WorkflowConfig struct {
-	Interval                    int  `yaml:"interval"`
-	UseTmux                     bool `yaml:"use_tmux"`
-	AutoMergeEnabled            bool `yaml:"auto_merge_enabled"`
-	ClosedIssueCleanupEnabled   bool `yaml:"closed_issue_cleanup_enabled"`
-	ClosedIssueCleanupInterval  int  `yaml:"closed_issue_cleanup_interval"`
-	TmuxCommandDelay            int  `yaml:"tmux_command_delay"`
+	Interval                   int  `yaml:"interval"`
+	UseTmux                    bool `yaml:"use_tmux"`
+	AutoMergeEnabled           bool `yaml:"auto_merge_enabled"`
+	ClosedIssueCleanupEnabled  bool `yaml:"closed_issue_cleanup_enabled"`
+	ClosedIssueCleanupInterval int  `yaml:"closed_issue_cleanup_interval"`
+	TmuxCommandDelay           int  `yaml:"tmux_command_delay"`
 }
 
 type SlackConfig struct {

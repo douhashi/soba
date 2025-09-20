@@ -85,9 +85,9 @@ development workflows through seamless integration with Claude Code AI.`
 
 func TestConfigFlags(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     []string
-		wantErr  bool
+		name    string
+		args    []string
+		wantErr bool
 	}{
 		{
 			name:    "Config flag with value",

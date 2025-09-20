@@ -196,12 +196,12 @@ func TestConfigStructFields(t *testing.T) {
 			AuthMethod: "token",
 		},
 		Workflow: WorkflowConfig{
-			Interval:                    20,
-			UseTmux:                     true,
-			AutoMergeEnabled:            true,
-			ClosedIssueCleanupEnabled:   true,
+			Interval:                   20,
+			UseTmux:                    true,
+			AutoMergeEnabled:           true,
+			ClosedIssueCleanupEnabled:  true,
 			ClosedIssueCleanupInterval: 300,
-			TmuxCommandDelay:            3,
+			TmuxCommandDelay:           3,
 		},
 		Slack: SlackConfig{
 			WebhookURL:           "https://test.com",
