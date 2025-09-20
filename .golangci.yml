@@ -6,12 +6,12 @@ run:
   # List of build tags, all linters use it.
   build-tags:
     - integration
-  # Which dirs to exclude: issues from them won't be reported.
-  exclude-dirs:
+  # Which dirs to skip: issues from them won't be reported.
+  skip-dirs:
     - vendor
     - .git
-  # Which files to exclude: they will be analyzed, but issues from them won't be reported.
-  exclude-files:
+  # Which files to skip: they will be analyzed, but issues from them won't be reported.
+  skip-files:
     - ".*\\.pb\\.go$"
     - ".*\\.gen\\.go$"
 
