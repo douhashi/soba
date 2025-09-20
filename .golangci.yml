@@ -7,11 +7,11 @@ run:
   build-tags:
     - integration
   # Which dirs to skip: issues from them won't be reported.
-  exclude-dirs:
+  skip-dirs:
     - vendor
     - .git
   # Which files to skip: they will be analyzed, but issues from them won't be reported.
-  exclude-files:
+  skip-files:
     - ".*\\.pb\\.go$"
     - ".*\\.gen\\.go$"
 
