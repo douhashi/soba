@@ -11,6 +11,8 @@ var (
 	cfgFile string
 	verbose bool
 	Version string
+	Commit  string
+	Date    string
 )
 
 var rootCmd = &cobra.Command{
@@ -20,8 +22,10 @@ var rootCmd = &cobra.Command{
 development workflows through seamless integration with Claude Code AI.`,
 }
 
-func Execute(version string) error {
+func Execute(version, commit, date string) error {
 	Version = version
+	Commit = commit
+	Date = date
 	return rootCmd.Execute()
 }
 
@@ -31,13 +35,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file path")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
-	rootCmd.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintf(cmd.OutOrStdout(), "soba version %s\n", Version)
-		},
-	})
+	rootCmd.AddCommand(newVersionCommand())
 }
 
 func initConfig() {

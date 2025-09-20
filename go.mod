@@ -1,12 +1,12 @@
 module github.com/douhashi/soba
 
-go 1.23.4
+go 1.24.0
+
+toolchain go1.24.5
 
 require (
-	github.com/google/go-github/v64 v64.0.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
-	golang.org/x/oauth2 v0.31.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

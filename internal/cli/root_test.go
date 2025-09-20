@@ -38,7 +38,7 @@ func TestExecute(t *testing.T) {
 			rootCmd.SetArgs(tt.args)
 			Version = tt.version
 
-			err := Execute(tt.version)
+			err := Execute(tt.version, "test-commit", "test-date")
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -51,6 +51,8 @@ func TestVersionCommand(t *testing.T) {
 	rootCmd.SetOut(buf)
 	rootCmd.SetArgs([]string{"version"})
 	Version = "1.0.0-test"
+	Commit = "abc123"
+	Date = "2024-01-01"
 
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -59,6 +61,12 @@ func TestVersionCommand(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "1.0.0-test") {
 		t.Errorf("Version command output = %v, want to contain version", output)
+	}
+	if !strings.Contains(output, "abc123") {
+		t.Errorf("Version command output = %v, want to contain commit", output)
+	}
+	if !strings.Contains(output, "2024-01-01") {
+		t.Errorf("Version command output = %v, want to contain date", output)
 	}
 }
 
