@@ -2,8 +2,6 @@ module github.com/douhashi/soba
 
 go 1.23.0
 
-toolchain go1.24.5
-
 require (
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
