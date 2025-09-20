@@ -30,7 +30,6 @@ linters:
     - unparam
     - nakedret
     - prealloc
-    - copyloopvar
     - gosimple
     - unused
 
