@@ -4,6 +4,10 @@
 GOBIN := $(shell go env GOPATH)/bin
 COVERAGE_FILE := coverage.out
 COVERAGE_HTML := coverage.html
+VERSION := $(shell git describe --tags --always --dirty)
+COMMIT := $(shell git rev-parse --short HEAD)
+DATE := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS := -ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
 # Default target
 all: fmt vet lint test build
@@ -68,17 +72,31 @@ clean:
 	@echo "Cleaning..."
 	@go clean -testcache
 	@rm -f $(COVERAGE_FILE) $(COVERAGE_HTML)
-	@rm -rf dist/
+	@rm -rf bin/ dist/ coverage.*
 
 # Install the application
 install:
 	@echo "Installing soba..."
-	@go install ./cmd/soba
+	@go install $(LDFLAGS) ./cmd/soba
 
 # Build the application
 build:
 	@echo "Building soba..."
-	@go build -o dist/soba ./cmd/soba
+	@go build $(LDFLAGS) -o bin/soba cmd/soba/main.go
+
+# Run the application
+run:
+	@echo "Running soba..."
+	@go run cmd/soba/main.go
+
+# Cross compilation
+build-all:
+	@echo "Building for multiple platforms..."
+	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/soba-linux-amd64 cmd/soba/main.go
+	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/soba-linux-arm64 cmd/soba/main.go
+	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/soba-darwin-amd64 cmd/soba/main.go
+	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/soba-darwin-arm64 cmd/soba/main.go
+	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/soba-windows-amd64.exe cmd/soba/main.go
 
 # Download dependencies
 deps:
@@ -127,6 +145,8 @@ help:
 	@echo "  make clean         - Clean build artifacts and test cache"
 	@echo "  make install       - Install the application"
 	@echo "  make build         - Build the application"
+	@echo "  make run           - Run the application"
+	@echo "  make build-all     - Cross compile for multiple platforms"
 	@echo "  make deps          - Download dependencies"
 	@echo "  make deps-update   - Update dependencies"
 	@echo "  make deps-verify   - Verify dependencies"
