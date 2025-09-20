@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	yaml "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
