@@ -1,3 +1,4 @@
+// Package config provides configuration loading and management functionality.
 package config
 
 import (
@@ -76,6 +77,8 @@ func expandEnvVars(content string) string {
 		if value, ok := os.LookupEnv(key); ok {
 			return value
 		}
+		// Log warning for undefined environment variable
+		fmt.Fprintf(os.Stderr, "Warning: undefined environment variable: %s\n", key)
 		return "${" + key + "}"
 	})
 }

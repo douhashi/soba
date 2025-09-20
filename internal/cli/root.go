@@ -1,3 +1,4 @@
+// Package cli provides command-line interface functionality for the soba tool.
 package cli
 
 import (
