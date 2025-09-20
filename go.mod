@@ -1,7 +1,8 @@
 module github.com/douhashi/soba
 
-go 1.23
+go 1.24.0
 
+toolchain go1.24.5
 
 require (
 	github.com/spf13/cobra v1.10.1
