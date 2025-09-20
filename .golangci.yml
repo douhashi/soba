@@ -6,14 +6,6 @@ run:
   # List of build tags, all linters use it.
   build-tags:
     - integration
-  # Which dirs to skip: issues from them won't be reported.
-  skip-dirs:
-    - vendor
-    - .git
-  # Which files to skip: they will be analyzed, but issues from them won't be reported.
-  skip-files:
-    - ".*\\.pb\\.go$"
-    - ".*\\.gen\\.go$"
 
 linters:
   enable:
@@ -64,6 +56,14 @@ linters-settings:
     for-loops: true
 
 issues:
+  # Which directories to exclude from linting.
+  exclude-dirs:
+    - vendor
+    - .git
+  # Which files to exclude from linting.
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
   # List of regexps of issue texts to exclude.
   exclude:
     - "G104:" # Errors unhandled - handled selectively
