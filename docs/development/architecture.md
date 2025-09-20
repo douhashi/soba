@@ -95,46 +95,37 @@ WorkflowExecutor (実行)
 GitHub API (結果更新)
 ```
 
-## 並行処理アーキテクチャ
+## シーケンシャル処理アーキテクチャ
 
-### Producer-Consumerパターン
+### 単一処理ループ
 ```go
-type IssueQueue struct {
-    ch chan *Issue
-}
-
-// Producer
-func (w *IssueWatcher) Watch(ctx context.Context) {
+// 1Issue 1プロセス - 並列実行なし
+func (w *IssueWatcher) WatchAndProcess(ctx context.Context) {
     for {
-        issues := w.fetchIssues()
+        issues := w.fetchTodoIssues()
         for _, issue := range issues {
-            w.queue.Send(issue)
+            // 1つずつ順番に処理
+            if err := w.processIssue(ctx, issue); err != nil {
+                slog.Error("failed to process issue",
+                    "issue_number", issue.Number,
+                    "error", err)
+                continue
+            }
+            // 完了まで待機
+            w.waitUntilCompleted(ctx, issue)
         }
         time.Sleep(w.interval)
-    }
-}
-
-// Consumer
-func (p *IssueProcessor) Process(ctx context.Context) {
-    for issue := range p.queue.Receive() {
-        go p.processIssue(ctx, issue)
     }
 }
 ```
 
 ## 状態管理
 
-### 永続化戦略
-```go
-type State struct {
-    ActiveIssues map[int]*IssueState `json:"active_issues"`
-    LastCheck    time.Time           `json:"last_check"`
-    Stats        Statistics          `json:"statistics"`
-}
-
-// ファイルベース永続化
-/tmp/soba_state.json
-```
+### Single Source of Truth
+- **GitHub Issueのラベル**: 唯一の信頼できる状態源
+- **永続化なし**: ローカルファイルへの状態保存は行わない
+- **起動時同期**: 起動時にGitHub APIから現在の状態を取得
+- **メモリ内管理**: 実行中の状態はメモリ内でのみ管理
 
 ## エラーハンドリング
 
@@ -203,37 +194,6 @@ type FileTokenProvider struct{}     // ファイル
 - 設定ファイルの権限チェック (0600)
 - ログでのマスキング
 
-## スケーラビリティ
-
-### 水平スケーリング
-```go
-// ワーカープール
-type WorkerPool struct {
-    workers int
-    queue   chan Task
-}
-
-func (p *WorkerPool) Start() {
-    for i := 0; i < p.workers; i++ {
-        go p.worker()
-    }
-}
-```
-
-### リソース制限
-```go
-// セマフォによる並行数制御
-type Semaphore struct {
-    ch chan struct{}
-}
-
-func NewSemaphore(n int) *Semaphore {
-    return &Semaphore{
-        ch: make(chan struct{}, n),
-    }
-}
-```
-
 ## 監視・可観測性
 
 ### メトリクス
@@ -265,7 +225,6 @@ soba-linux-amd64
 soba-linux-arm64
 soba-darwin-amd64
 soba-darwin-arm64
-soba-windows-amd64.exe
 ```
 
 ### 設定管理
