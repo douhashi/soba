@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - 'soba/**'
   pull_request:
     branches:
       - main
