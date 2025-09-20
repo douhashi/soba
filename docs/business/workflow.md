@@ -78,7 +78,7 @@ stateDiagram-v2
     soba_ready --> soba_doing: 実装開始
     soba_doing --> soba_review_requested: PR作成
     soba_review_requested --> soba_reviewing: レビュー開始
-    soba_reviewing --> soba_done: レビュー承認+PR:lgtm
+    soba_reviewing --> soba_done: レビュー承認、PRにlgtm付与
     soba_reviewing --> soba_requires_changes: 修正要求
     soba_requires_changes --> soba_revising: 修正開始
     soba_revising --> soba_review_requested: 修正完了
@@ -106,7 +106,7 @@ stateDiagram-v2
 
     note right of soba_done
         Issue: マージ待機
-        PR: soba:lgtmラベル付き
+        PRにlgtmラベル付き
     end note
 
     note left of soba_requires_changes
@@ -136,14 +136,14 @@ flowchart TB
     ReviewReq --> Reviewing[Issue: soba:reviewing<br/>Claude Code: レビュー]
     Reviewing --> ReviewResult{レビュー結果}
 
-    ReviewResult -->|承認| PRLabel[PR: soba:lgtmラベル付与]
+    ReviewResult -->|承認| PRLabel[PRにlgtmラベル付与]
     PRLabel --> Done[Issue: soba:done]
     ReviewResult -->|修正要| RequiresChanges[Issue: soba:requires-changes]
 
     RequiresChanges --> Revising[Issue: soba:revising<br/>Claude Code: 修正]
     Revising --> ReviewReq
 
-    Done --> CheckPR{PR: lgtm確認}
+    Done --> CheckPR{PRのlgtm確認}
     CheckPR -->|確認OK| Merged[Issue: soba:merged<br/>Squash Merge]
     Merged --> Cleanup[クリーンアップ<br/>・Issue Close<br/>・Worktree削除<br/>・tmux終了]
     Cleanup --> End([完了])
