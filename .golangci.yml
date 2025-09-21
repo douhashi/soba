@@ -1,0 +1,92 @@
+run:
+  # Timeout for analysis, e.g. 30s, 5m.
+  timeout: 5m
+  # Include test files or not.
+  tests: true
+  # List of build tags, all linters use it.
+  build-tags:
+    - integration
+
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - ineffassign
+    - staticcheck
+    - gosec
+    - unconvert
+    - goconst
+    - gocyclo
+    - misspell
+    - unparam
+    - nakedret
+    - prealloc
+    - gosimple
+    - unused
+    - copyloopvar
+
+  disable:
+    - errcheck # Too noisy, enable selectively
+    - godox # We allow TODO/BUG/FIXME comments
+    - funlen # Function length is not strictly limited
+    - gocognit # Cognitive complexity is not strictly limited
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/douhashi/soba
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment # Too strict for general use
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  misspell:
+    locale: US
+  gocyclo:
+    min-complexity: 15
+  nakedret:
+    max-func-lines: 30
+  prealloc:
+    simple: true
+    range-loops: true
+    for-loops: true
+
+issues:
+  # Which directories to exclude from linting.
+  exclude-dirs:
+    - vendor
+    - .git
+  # Which files to exclude from linting.
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
+  # List of regexps of issue texts to exclude.
+  exclude:
+    - "G104:" # Errors unhandled - handled selectively
+    - "exported .* should have comment or be unexported"
+    - "ST1000:" # Package comments
+
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - gosec
+        - goconst
+        - unparam
+
+    # Exclude lll issues for long lines with go:generate
+    - linters:
+        - lll
+      source: "^//go:generate "
+
+  # Maximum issues count per one linter.
+  max-issues-per-linter: 0
+  # Maximum count of issues with the same text.
+  max-same-issues: 0
+  # Show only new issues created after git revision.
+  new: false

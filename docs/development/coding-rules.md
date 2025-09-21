@@ -177,6 +177,29 @@ func ProcessIssue(ctx context.Context, issue *Issue) error {
 }
 ```
 
+## 開発コマンド
+
+### ビルド・テスト
+```bash
+# ビルド
+make build
+
+# テスト実行（推奨）
+make test
+
+# テストカバレッジ確認
+make test-coverage
+
+# リント実行
+make lint
+
+# フォーマット
+make fmt
+
+# クリーン
+make clean
+```
+
 ## リンター設定
 
 ### golangci-lint

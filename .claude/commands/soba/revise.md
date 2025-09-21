@@ -36,7 +36,8 @@ GH_PAGER= gh pr view <PR-number> --comments
 ### 4. テスト実行
 
 ```bash
-bundle exec rspec  # Timeout 600000
+# テスト実行（推奨）
+make test  # Timeout 600000
 ```
 
 ### 5. 修正内容のコミット

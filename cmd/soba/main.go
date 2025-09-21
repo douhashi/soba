@@ -1,25 +1,21 @@
 package main
 
 import (
-	"flag"
 	"fmt"
+	"os"
 
-	"github.com/douhashi/soba/internal/greeting"
+	"github.com/douhashi/soba/internal/cli"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
 
 func main() {
-	var (
-		name     string
-		japanese bool
-	)
-
-	flag.StringVar(&name, "name", "", "Name to greet")
-	flag.BoolVar(&japanese, "ja", false, "Use Japanese greeting")
-	flag.Parse()
-
-	if japanese {
-		fmt.Println(greeting.JapaneseGreeting(name))
-	} else {
-		fmt.Println(greeting.Hello(name))
+	if err := cli.Execute(version, commit, date); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 }
