@@ -26,6 +26,7 @@ type TmuxClient interface {
 	DeletePane(sessionName, windowName string, paneIndex int) error
 	GetPaneCount(sessionName, windowName string) (int, error)
 	GetFirstPaneIndex(sessionName, windowName string) (int, error)
+	GetLastPaneIndex(sessionName, windowName string) (int, error)
 	ResizePanes(sessionName, windowName string) error
 
 	// コマンド送信
@@ -260,6 +261,43 @@ func (c *Client) GetFirstPaneIndex(sessionName, windowName string) (int, error) 
 	}
 
 	return firstPaneIndex, nil
+}
+
+// GetLastPaneIndex はウィンドウ内で最後のペインのインデックス番号を取得する
+// tmux環境によってペインインデックスの開始番号が異なるため、動的に判定する
+func (c *Client) GetLastPaneIndex(sessionName, windowName string) (int, error) {
+	if !c.SessionExists(sessionName) {
+		return 0, ErrSessionNotFound
+	}
+
+	exists, err := c.WindowExists(sessionName, windowName)
+	if err != nil {
+		return 0, err
+	}
+	if !exists {
+		return 0, ErrWindowNotFound
+	}
+
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
+	cmd := exec.Command("tmux", "list-panes", "-t", fmt.Sprintf("%s:%s", sessionName, windowName), "-F", "#{pane_index}")
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, NewTmuxError("list_panes", fmt.Sprintf("failed to list panes in window '%s' of session '%s'", windowName, sessionName), err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	if len(lines) == 0 || (len(lines) == 1 && lines[0] == "") {
+		return 0, fmt.Errorf("no panes found in window")
+	}
+
+	// 最後のペインのインデックスを取得
+	lastLine := lines[len(lines)-1]
+	lastPaneIndex, err := strconv.Atoi(lastLine)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse last pane index: %v", err)
+	}
+
+	return lastPaneIndex, nil
 }
 
 // ResizePanes はウィンドウ内の全ペインを水平方向に均等にリサイズする

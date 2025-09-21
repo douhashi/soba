@@ -30,14 +30,15 @@ type IssueChange struct {
 
 // IssueWatcher はIssue監視機能を提供する
 type IssueWatcher struct {
-	client         GitHubClientInterface
-	config         *config.Config
-	interval       time.Duration
-	logger         logger.Logger
-	previousIssues map[int64]github.Issue  // Issue IDをキーとする前回の状態
-	phaseStrategy  domain.PhaseStrategy    // Phase管理戦略
-	processor      IssueProcessorInterface // Issue処理用のプロセッサ
-	currentIssue   *int                    // 現在処理中のIssue番号（シングルライン処理用）
+	client           GitHubClientInterface
+	config           *config.Config
+	interval         time.Duration
+	logger           logger.Logger
+	previousIssues   map[int64]github.Issue  // Issue IDをキーとする前回の状態
+	processor        IssueProcessorInterface // Issue処理用のプロセッサ
+	currentIssue     *int                    // 現在処理中のIssue番号（シングルライン処理用）
+	queueManager     *QueueManager           // キュー管理用マネージャー
+	workflowExecutor WorkflowExecutor        // ワークフロー実行用エグゼキューター
 }
 
 // NewIssueWatcher は新しいIssueWatcherを作成する
@@ -56,7 +57,6 @@ func NewIssueWatcher(client GitHubClientInterface, cfg *config.Config) *IssueWat
 		interval:       time.Duration(cfg.Workflow.Interval) * time.Second,
 		logger:         log,
 		previousIssues: make(map[int64]github.Issue),
-		phaseStrategy:  nil, // デフォルトではPhaseStrategyは無効
 	}
 }
 
@@ -65,19 +65,19 @@ func (w *IssueWatcher) SetLogger(log logger.Logger) {
 	w.logger = log
 }
 
-// EnablePhaseStrategy はPhaseStrategyを有効にする
-func (w *IssueWatcher) EnablePhaseStrategy() {
-	w.phaseStrategy = domain.NewDefaultPhaseStrategy()
-}
-
-// SetPhaseStrategy はPhaseStrategyを設定する
-func (w *IssueWatcher) SetPhaseStrategy(strategy domain.PhaseStrategy) {
-	w.phaseStrategy = strategy
-}
-
 // SetProcessor はIssueProcessorを設定する
 func (w *IssueWatcher) SetProcessor(processor IssueProcessorInterface) {
 	w.processor = processor
+}
+
+// SetQueueManager はQueueManagerを設定する
+func (w *IssueWatcher) SetQueueManager(qm *QueueManager) {
+	w.queueManager = qm
+}
+
+// SetWorkflowExecutor はWorkflowExecutorを設定する
+func (w *IssueWatcher) SetWorkflowExecutor(executor WorkflowExecutor) {
+	w.workflowExecutor = executor
 }
 
 // Start はIssue監視を開始する
@@ -114,7 +114,17 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 		return err
 	}
 
-	// シングルライン処理: 処理可能なIssueを選択
+	// 1. キュー管理（soba:todo → soba:queued）
+	if w.queueManager != nil {
+		if err := w.queueManager.EnqueueNextIssue(ctx, issues); err != nil {
+			w.logger.Error("Failed to enqueue", "error", err)
+		}
+	}
+
+	// 2. キューに入ったIssueの処理（soba:queued → plan実行）
+	w.processQueuedIssues(ctx, issues)
+
+	// 3. その他のワークフロー処理
 	issueToProcess := w.selectIssueForProcessing(issues)
 
 	// 変更を検知してログ出力
@@ -125,7 +135,7 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 		w.logger.Error("Failed to process selected issue", "error", err)
 	}
 
-	// 自動フェーズ遷移を処理
+	// 自動フェーズ遷移を処理（queue以外）
 	w.handleAutoTransitions(ctx, issues)
 
 	return nil
@@ -142,7 +152,7 @@ func (w *IssueWatcher) detectAndLogChanges(issues []github.Issue) {
 	for _, change := range changes {
 		w.logChange(change)
 		// PhaseStrategyが有効な場合は、フェーズ分析を行う
-		if w.phaseStrategy != nil && change.Type == IssueChangeTypeLabelChanged {
+		if change.Type == IssueChangeTypeLabelChanged {
 			w.analyzeAndLogPhaseTransition(change)
 		}
 	}
@@ -150,28 +160,57 @@ func (w *IssueWatcher) detectAndLogChanges(issues []github.Issue) {
 
 // processSelectedIssue は選択されたIssueを処理する
 func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess *github.Issue) error {
-	if issueToProcess == nil || w.processor == nil {
+	if issueToProcess == nil || w.workflowExecutor == nil {
 		return nil
 	}
 
-	// 処理可能なフェーズを持つ場合のみ実際に処理
-	if !w.hasProcessablePhase(*issueToProcess) {
-		w.logger.Debug("Issue does not have processable phase", "issue", issueToProcess.Number)
+	// トリガーラベルから実行するフェーズを判定
+	var phaseToExecute domain.Phase
+	for _, phaseDef := range domain.PhaseDefinitions {
+		if w.hasLabel(*issueToProcess, phaseDef.TriggerLabel) {
+			phaseToExecute = domain.Phase(phaseDef.Name)
+			break
+		}
+	}
+
+	if phaseToExecute == "" {
+		w.logger.Debug("No trigger label found for issue", "issue", issueToProcess.Number)
 		return nil
 	}
 
-	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number)
-	if err := w.processor.ProcessIssue(ctx, w.config, *issueToProcess); err != nil {
-		w.logger.Error("Failed to process issue", "error", err, "issue", issueToProcess.Number)
+	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number, "phase", phaseToExecute)
+	if err := w.workflowExecutor.ExecutePhase(ctx, w.config, issueToProcess.Number, phaseToExecute); err != nil {
+		w.logger.Error("Failed to execute phase", "error", err, "issue", issueToProcess.Number, "phase", phaseToExecute)
 		return err
 	}
 
 	return nil
 }
 
+// processQueuedIssues はキューに入ったIssueを処理する
+func (w *IssueWatcher) processQueuedIssues(ctx context.Context, issues []github.Issue) {
+	if w.workflowExecutor == nil {
+		return
+	}
+
+	for _, issue := range issues {
+		// soba:queuedラベルがあれば即座にplanフェーズを実行
+		if w.hasLabel(issue, domain.LabelQueued) {
+			w.logger.Info("Processing queued issue", "issue", issue.Number)
+
+			// 明示的にplanフェーズを実行
+			err := w.workflowExecutor.ExecutePhase(ctx, w.config, issue.Number, domain.PhasePlan)
+			if err != nil {
+				w.logger.Error("Failed to execute plan phase", "error", err, "issue", issue.Number)
+			}
+			break // シングルライン処理のため1つだけ処理
+		}
+	}
+}
+
 // handleAutoTransitions は自動フェーズ遷移を処理する
 func (w *IssueWatcher) handleAutoTransitions(ctx context.Context, issues []github.Issue) {
-	if w.phaseStrategy == nil || w.processor == nil {
+	if w.processor == nil {
 		return
 	}
 
@@ -346,10 +385,6 @@ func (w *IssueWatcher) formatLabels(labels []github.Label) string {
 
 // analyzePhase はIssueの現在のフェーズを分析する
 func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) {
-	if w.phaseStrategy == nil {
-		return "", "", fmt.Errorf("phase strategy is not enabled")
-	}
-
 	// ラベル名の配列を作成
 	labelNames := make([]string, 0, len(issue.Labels))
 	for _, label := range issue.Labels {
@@ -357,16 +392,22 @@ func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) 
 	}
 
 	// 現在のフェーズを判定
-	phase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	phase, err := domain.GetCurrentPhaseFromLabels(labelNames)
 	if err != nil {
 		return "", "", err
 	}
 
-	// 次のラベルを取得
-	nextLabel, err := w.phaseStrategy.GetNextLabel(phase)
-	if err != nil {
-		// 次の遷移がない場合はエラーではなく空文字を返す
+	// 次のラベルを取得（フェーズ定義から）
+	phaseDef := domain.PhaseDefinitions[string(phase)]
+	if phaseDef == nil {
 		return string(phase), "", nil
+	}
+
+	// 完了ラベルから最初のものを次のラベルとして使用
+	var nextLabel string
+	for label := range phaseDef.CompletionLabels {
+		nextLabel = label
+		break
 	}
 
 	return string(phase), nextLabel, nil
@@ -374,7 +415,7 @@ func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) 
 
 // isValidTransition は遷移が有効かチェックする
 func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
-	if w.phaseStrategy == nil || change.Previous == nil {
+	if change.Previous == nil {
 		return true // PhaseStrategyが無効な場合は常に有効とする
 	}
 
@@ -383,7 +424,7 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 	for _, label := range change.Previous.Labels {
 		prevLabelNames = append(prevLabelNames, label.Name)
 	}
-	prevPhase, err := w.phaseStrategy.GetCurrentPhase(prevLabelNames)
+	prevPhase, err := domain.GetCurrentPhaseFromLabels(prevLabelNames)
 	if err != nil {
 		w.logger.Debug("Failed to get previous phase", "error", err)
 		return true // エラーの場合は検証をスキップ
@@ -394,14 +435,17 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 	for _, label := range change.Issue.Labels {
 		currLabelNames = append(currLabelNames, label.Name)
 	}
-	currPhase, err := w.phaseStrategy.GetCurrentPhase(currLabelNames)
+	currPhase, err := domain.GetCurrentPhaseFromLabels(currLabelNames)
 	if err != nil {
 		w.logger.Debug("Failed to get current phase", "error", err)
 		return true // エラーの場合は検証をスキップ
 	}
 
 	// 遷移の検証
-	err = w.phaseStrategy.ValidateTransition(prevPhase, currPhase)
+	// TODO: 遷移ルールを必要に応じて追加
+	_ = prevPhase
+	_ = currPhase
+	err = nil
 	return err == nil
 }
 
@@ -431,14 +475,9 @@ func (w *IssueWatcher) selectIssueForProcessing(issues []github.Issue) *github.I
 func (w *IssueWatcher) checkInProgressIssues(issues []github.Issue) *github.Issue {
 	for _, issue := range issues {
 		if w.isInProgressPhase(issue) {
-			if w.isIssueCompleted(issue) {
-				w.logger.Info("Issue processing completed", "issue", issue.Number)
-				w.currentIssue = nil
-			} else {
-				w.currentIssue = &issue.Number
-				w.logger.Debug("Issue still in progress", "issue", issue.Number)
-				return nil // シングルライン処理のため、他のIssueは処理しない
-			}
+			w.currentIssue = &issue.Number
+			w.logger.Debug("Issue still in progress", "issue", issue.Number)
+			return nil // シングルライン処理のため、他のIssueは処理しない
 		}
 	}
 	return nil
@@ -453,18 +492,21 @@ func (w *IssueWatcher) checkCurrentIssue(issues []github.Issue) bool {
 	currentIssueNumber := *w.currentIssue
 	for _, issue := range issues {
 		if issue.Number == currentIssueNumber {
-			if w.isIssueCompleted(issue) {
-				w.logger.Info("Issue processing completed", "issue", currentIssueNumber)
+			// 進行中ラベルがない場合は、処理が完了したとみなす
+			// （例：soba:planning → soba:readyへの遷移）
+			if !w.isInProgressPhase(issue) {
+				w.logger.Info("Issue phase completed, ready for next phase", "issue", currentIssueNumber)
 				w.currentIssue = nil
 				return false
 			}
+
 			w.logger.Debug("Issue still in progress", "issue", currentIssueNumber)
 			return true
 		}
 	}
 
-	// 処理中のIssueが見つからない場合もクリア
-	w.logger.Warn("Processing issue not found, clearing flag", "issue", currentIssueNumber)
+	// 処理中のIssueが見つからない場合もクリア（Issue closed の場合）
+	w.logger.Info("Processing issue completed (closed)", "issue", currentIssueNumber)
 	w.currentIssue = nil
 	return false
 }
@@ -473,6 +515,16 @@ func (w *IssueWatcher) checkCurrentIssue(issues []github.Issue) bool {
 func (w *IssueWatcher) collectProcessableIssues(issues []github.Issue) []github.Issue {
 	var processableIssues []github.Issue
 	for _, issue := range issues {
+		// soba:queuedはprocessQueuedIssuesで処理されるので除外
+		if w.hasLabel(issue, domain.LabelQueued) {
+			continue
+		}
+
+		// QueueManagerが設定されている場合、soba:todoはQueueManagerで処理されるので除外
+		if w.queueManager != nil && w.hasLabel(issue, "soba:todo") {
+			continue
+		}
+
 		hasTodoLabel := w.hasLabel(issue, "soba:todo")
 		hasProcessable := w.hasProcessablePhase(issue)
 		w.logger.Debug("Checking issue for processing", "issue", issue.Number, "hasTodo", hasTodoLabel, "hasProcessable", hasProcessable)
@@ -528,29 +580,36 @@ func (w *IssueWatcher) hasLabel(issue github.Issue, labelName string) bool {
 
 // hasProcessablePhase はIssueが処理可能なフェーズにあるかチェックする
 func (w *IssueWatcher) hasProcessablePhase(issue github.Issue) bool {
-	if w.phaseStrategy == nil {
-		return false
+	// トリガーラベルを持つIssueを処理可能とする
+	// (soba:queuedは除外 - processQueuedIssuesで処理される)
+	triggerLabels := []string{
+		domain.LabelReady,           // implementフェーズのトリガー
+		domain.LabelReviewRequested, // reviewフェーズのトリガー
+		domain.LabelRequiresChanges, // reviseフェーズのトリガー
+		domain.LabelDone,            // mergeフェーズのトリガー
 	}
 
-	// ラベル名の配列を作成
-	labelNames := make([]string, 0, len(issue.Labels))
-	for _, label := range issue.Labels {
-		labelNames = append(labelNames, label.Name)
+	for _, triggerLabel := range triggerLabels {
+		if w.hasLabel(issue, triggerLabel) {
+			return true
+		}
 	}
 
-	// 現在のフェーズを判定
-	phase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
-	if err != nil {
-		return false
+	// 実行中ラベルを持つIssueも処理継続の対象
+	executionLabels := []string{
+		domain.LabelPlanning,
+		domain.LabelDoing,
+		domain.LabelReviewing,
+		domain.LabelRevising,
 	}
 
-	// 処理可能なフェーズかチェック（コマンドが定義されているフェーズまたはQueue）
-	switch phase {
-	case domain.PhaseQueue, domain.PhasePlan, domain.PhaseImplement, domain.PhaseReview, domain.PhaseRevise:
-		return true
-	default:
-		return false
+	for _, executionLabel := range executionLabels {
+		if w.hasLabel(issue, executionLabel) {
+			return true
+		}
 	}
+
+	return false
 }
 
 // isInProgressPhase はIssueが進行中のフェーズにあるかチェックする
@@ -568,23 +627,10 @@ func (w *IssueWatcher) isInProgressPhase(issue github.Issue) bool {
 	return false
 }
 
-// isIssueCompleted はIssueが完了状態かチェックする
-func (w *IssueWatcher) isIssueCompleted(issue github.Issue) bool {
-	// soba:mergedまたはsoba:closedラベルがあれば完了
-	return w.hasLabel(issue, "soba:merged") || w.hasLabel(issue, "soba:closed") || issue.State == "closed"
-}
-
 // shouldAutoTransition は自動遷移が必要かチェックする
 func (w *IssueWatcher) shouldAutoTransition(issue github.Issue) bool {
-	// 以下のラベルは自動遷移が必要：
-	// - soba:planning -> コマンド完了後にsoba:readyへ
-	// - soba:doing -> コマンド完了後にsoba:review-requestedへ
-	// - soba:revising -> コマンド完了後にsoba:review-requestedへ
-
-	// これらのフェーズは、WorkflowExecutorが実際にコマンドを実行しているので、
-	// コマンド完了検知はWorkflowExecutor側で行う必要がある
-	// IssueWatcher側では検知しない
-
+	// 現在のアーキテクチャではqueueフェーズの自動遷移は
+	// processQueuedIssuesで処理されるため、常にfalseを返す
 	return false
 }
 
@@ -599,7 +645,7 @@ func (w *IssueWatcher) analyzeAndLogPhaseTransition(change IssueChange) {
 	for _, label := range change.Previous.Labels {
 		prevLabelNames = append(prevLabelNames, label.Name)
 	}
-	prevPhase, _ := w.phaseStrategy.GetCurrentPhase(prevLabelNames)
+	prevPhase, _ := domain.GetCurrentPhaseFromLabels(prevLabelNames)
 
 	// 現在のフェーズと次のラベルを取得
 	currentPhase, nextLabel, err := w.analyzePhase(change.Issue)
