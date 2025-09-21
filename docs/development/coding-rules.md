@@ -107,21 +107,36 @@ wg.Wait()
 ## ファイル構造
 
 ### インポート順序
+
+`goimports`のデフォルト動作に準拠し、以下の順序でインポートを記述します：
+
+1. 標準ライブラリ
+2. 外部ライブラリ（空行で区切る）
+3. ローカルパッケージ（空行で区切る）
+
 ```go
 import (
     // 標準ライブラリ
     "context"
     "fmt"
+    "log/slog"
 
     // 外部ライブラリ
     "github.com/google/go-github/v64/github"
     "github.com/spf13/cobra"
+    "github.com/spf13/viper"
 
-    // 内部パッケージ
+    // ローカルパッケージ（github.com/douhashi/soba）
     "github.com/douhashi/soba/internal/config"
     "github.com/douhashi/soba/internal/service"
+    "github.com/douhashi/soba/pkg/logger"
 )
 ```
+
+**注意事項：**
+- `.golangci.yml`で`local-prefixes: github.com/douhashi/soba`が設定されているため、このプレフィックスを持つパッケージは自動的にローカルパッケージとして扱われます
+- 各グループ内ではアルファベット順にソートされます
+- `goimports`を実行することで自動的に適切な順序に整形されます
 
 ## テスト
 
