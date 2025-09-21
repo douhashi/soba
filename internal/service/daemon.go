@@ -37,6 +37,7 @@ type daemonService struct {
 	workDir   string
 	processor IssueProcessorInterface
 	watcher   *IssueWatcher
+	prWatcher *PRWatcher
 }
 
 // NewDaemonService creates a new daemon service
@@ -84,10 +85,14 @@ func NewDaemonService() DaemonService {
 	watcher.SetQueueManager(queueManager)
 	watcher.SetWorkflowExecutor(executor)
 
+	// PRWatcherを初期化
+	prWatcher := NewPRWatcher(githubClient, &config.Config{})
+
 	return &daemonService{
 		workDir:   workDir,
 		processor: processorWithDeps,
 		watcher:   watcher,
+		prWatcher: prWatcher,
 	}
 }
 
@@ -111,8 +116,34 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 		}
 	}
 
+	// PRWatcherに設定を反映
+	if d.prWatcher != nil {
+		d.prWatcher.config = cfg
+		d.prWatcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
+		d.prWatcher.SetLogger(log)
+	}
+
+	// IssueWatcherとPRWatcherを並行して起動
+	errCh := make(chan error, 2)
+
 	// IssueWatcherを起動
-	return d.watcher.Start(ctx)
+	go func() {
+		errCh <- d.watcher.Start(ctx)
+	}()
+
+	// PRWatcherを起動
+	go func() {
+		errCh <- d.prWatcher.Start(ctx)
+	}()
+
+	// どちらかがエラーで終了したら全体を終了
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // StartDaemon starts Issue monitoring in daemon mode

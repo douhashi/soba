@@ -33,6 +33,31 @@ func (m *MockIntegrationGitHubClient) RemoveLabelFromIssue(ctx context.Context, 
 	return args.Error(0)
 }
 
+// PR関連のメソッドを追加（インターフェースを満たすため）
+func (m *MockIntegrationGitHubClient) ListPullRequests(ctx context.Context, owner, repo string, opts *github.ListPullRequestsOptions) ([]github.PullRequest, bool, error) {
+	args := m.Called(ctx, owner, repo, opts)
+	if args.Get(0) != nil {
+		return args.Get(0).([]github.PullRequest), args.Bool(1), args.Error(2)
+	}
+	return nil, false, args.Error(2)
+}
+
+func (m *MockIntegrationGitHubClient) GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, bool, error) {
+	args := m.Called(ctx, owner, repo, number)
+	if args.Get(0) != nil {
+		return args.Get(0).(*github.PullRequest), args.Bool(1), args.Error(2)
+	}
+	return nil, false, args.Error(2)
+}
+
+func (m *MockIntegrationGitHubClient) MergePullRequest(ctx context.Context, owner, repo string, number int, req *github.MergeRequest) (*github.MergeResponse, error) {
+	args := m.Called(ctx, owner, repo, number, req)
+	if args.Get(0) != nil {
+		return args.Get(0).(*github.MergeResponse), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
 // MockIntegrationWorkflowExecutor は統合テスト用のモック
 type MockIntegrationWorkflowExecutor struct {
 	mock.Mock
