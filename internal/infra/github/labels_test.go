@@ -26,13 +26,13 @@ func (m *MockTokenProvider) GetToken(ctx context.Context) (string, error) {
 
 func TestClient_CreateLabel(t *testing.T) {
 	tests := []struct {
-		name           string
-		label          CreateLabelRequest
-		statusCode     int
-		responseBody   string
-		expectedError  bool
-		expectedLabel  *Label
-		errorType      string
+		name          string
+		label         CreateLabelRequest
+		statusCode    int
+		responseBody  string
+		expectedError bool
+		expectedLabel *Label
+		errorType     string
 	}{
 		{
 			name: "正常系: ラベル作成成功",
@@ -248,17 +248,17 @@ func TestGetSobaLabels(t *testing.T) {
 		color       string
 		description string
 	}{
-		"soba:todo":              {"e1e4e8", "New issue awaiting processing"},
-		"soba:queued":            {"fbca04", "Selected for processing"},
-		"soba:planning":          {"d4c5f9", "Claude creating implementation plan"},
-		"soba:ready":             {"0e8a16", "Plan complete, awaiting implementation"},
-		"soba:doing":             {"1d76db", "Claude working on implementation"},
-		"soba:review-requested":  {"f9d71c", "PR created, awaiting review"},
-		"soba:reviewing":         {"a2eeef", "Claude reviewing PR"},
-		"soba:done":              {"0e8a16", "Review approved, ready to merge"},
-		"soba:requires-changes":  {"d93f0b", "Review requested modifications"},
-		"soba:revising":          {"ff6347", "Claude applying requested changes"},
-		"soba:merged":            {"6f42c1", "PR merged and issue closed"},
+		"soba:todo":             {"e1e4e8", "New issue awaiting processing"},
+		"soba:queued":           {"fbca04", "Selected for processing"},
+		"soba:planning":         {"d4c5f9", "Claude creating implementation plan"},
+		"soba:ready":            {"0e8a16", "Plan complete, awaiting implementation"},
+		"soba:doing":            {"1d76db", "Claude working on implementation"},
+		"soba:review-requested": {"f9d71c", "PR created, awaiting review"},
+		"soba:reviewing":        {"a2eeef", "Claude reviewing PR"},
+		"soba:done":             {"0e8a16", "Review approved, ready to merge"},
+		"soba:requires-changes": {"d93f0b", "Review requested modifications"},
+		"soba:revising":         {"ff6347", "Claude applying requested changes"},
+		"soba:merged":           {"6f42c1", "PR merged and issue closed"},
 	}
 
 	for _, label := range labels {

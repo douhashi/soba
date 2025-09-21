@@ -10,7 +10,7 @@ import (
 // MockClient はGitHub APIクライアントのモック実装
 type MockClient struct {
 	// ListOpenIssuesのモック設定
-	ListOpenIssuesFunc func(ctx context.Context, owner, repo string, opts *ListIssuesOptions) ([]Issue, bool, error)
+	ListOpenIssuesFunc  func(ctx context.Context, owner, repo string, opts *ListIssuesOptions) ([]Issue, bool, error)
 	ListOpenIssuesCalls []struct {
 		Owner string
 		Repo  string
