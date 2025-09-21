@@ -233,4 +233,3 @@ func (c *ClientImpl) hasNextPage(resp *http.Response) bool {
 	// 簡易的な実装
 	return len(linkHeader) > 0 && (len(linkHeader) > 0 && linkHeader != "")
 }
-
