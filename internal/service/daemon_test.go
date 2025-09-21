@@ -14,7 +14,8 @@ import (
 )
 
 func TestNewDaemonService(t *testing.T) {
-	t.Skip("NewDaemonService test skipped due to logging system conflicts in test environment")
+	service := NewDaemonService()
+	assert.NotNil(t, service)
 }
 
 // StartForegroundはloggingシステムとの競合でテストが困難なため、スキップ

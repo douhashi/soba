@@ -31,7 +31,11 @@ const loggerKey contextKey = iota
 func Init(cfg Config) {
 	mu.Lock()
 	defer mu.Unlock()
+	initLogger(cfg)
+}
 
+// initLogger は内部用で、ロックが既に取得されていることを前提とする
+func initLogger(cfg Config) {
 	if cfg.Output == nil {
 		cfg.Output = os.Stdout
 	}
@@ -77,10 +81,19 @@ func InitFromEnv(output io.Writer) {
 
 func GetLogger() *slog.Logger {
 	mu.RLock()
-	defer mu.RUnlock()
+	if globalLogger != nil {
+		defer mu.RUnlock()
+		return globalLogger
+	}
+	mu.RUnlock()
 
+	// 読み取りロックを解放してから書き込みロックを取得
+	mu.Lock()
+	defer mu.Unlock()
+
+	// ダブルチェック：他のgoroutineが初期化済みかもしれない
 	if globalLogger == nil {
-		Init(Config{})
+		initLogger(Config{})
 	}
 	return globalLogger
 }
@@ -90,7 +103,7 @@ func SetLevel(level slog.Level) {
 	defer mu.Unlock()
 
 	if globalLogger == nil {
-		Init(Config{Level: level})
+		initLogger(Config{Level: level})
 		return
 	}
 
