@@ -117,3 +117,18 @@ func TestConfigFlags(t *testing.T) {
 		})
 	}
 }
+
+func TestConfigCommandExists(t *testing.T) {
+	// Check if config command exists in root command
+	found := false
+	for _, cmd := range rootCmd.Commands() {
+		if cmd.Name() == "config" {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("Config command should be registered to root command")
+	}
+}
