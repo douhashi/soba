@@ -150,7 +150,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tmux.On("GetPaneCount", "soba", "issue-456").Return(0, nil)
 				tmux.On("CreatePane", "soba", "issue-456").Return(nil)
 				tmux.On("ResizePanes", "soba", "issue-456").Return(nil)
-				tmux.On("GetFirstPaneIndex", "soba", "issue-456").Return(0, nil)
+				tmux.On("GetLastPaneIndex", "soba", "issue-456").Return(0, nil)
 				tmux.On("SendCommand", "soba", "issue-456", 0, `cd .git/soba/worktrees/issue-456 && echo "Planning"`).Return(nil)
 			},
 			wantErr: false,
@@ -167,12 +167,13 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				workspace.On("PrepareWorkspace", 789).Return(nil) // Implementフェーズでworktree準備
 				tmux.On("SessionExists", "soba").Return(true)
 				tmux.On("WindowExists", "soba", "issue-789").Return(true, nil)
-				tmux.On("GetPaneCount", "soba", "issue-789").Return(3, nil)               // Max panes reached
-				tmux.On("GetFirstPaneIndex", "soba", "issue-789").Return(0, nil).Times(2) // 削除と送信で2回呼ばれる
+				tmux.On("GetPaneCount", "soba", "issue-789").Return(3, nil)      // Max panes reached
+				tmux.On("GetFirstPaneIndex", "soba", "issue-789").Return(0, nil) // 削除用
 				tmux.On("DeletePane", "soba", "issue-789", 0).Return(nil)
 				tmux.On("CreatePane", "soba", "issue-789").Return(nil)
 				tmux.On("ResizePanes", "soba", "issue-789").Return(nil)
-				tmux.On("SendCommand", "soba", "issue-789", 0, `cd .git/soba/worktrees/issue-789 && echo "Implementing"`).Return(nil)
+				tmux.On("GetLastPaneIndex", "soba", "issue-789").Return(2, nil) // 送信用（新しいペイン）
+				tmux.On("SendCommand", "soba", "issue-789", 2, `cd .git/soba/worktrees/issue-789 && echo "Implementing"`).Return(nil)
 			},
 			wantErr: false,
 		},
@@ -350,7 +351,7 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockTmux.On("GetPaneCount", "soba", "issue-1").Return(0, nil)
 	mockTmux.On("CreatePane", "soba", "issue-1").Return(nil)
 	mockTmux.On("ResizePanes", "soba", "issue-1").Return(nil)
-	mockTmux.On("GetFirstPaneIndex", "soba", "issue-1").Return(0, nil)
+	mockTmux.On("GetLastPaneIndex", "soba", "issue-1").Return(0, nil)
 	mockTmux.On("SendCommand", "soba", "issue-1", 0, `cd .git/soba/worktrees/issue-1 && soba:plan "1"`).Return(nil)
 
 	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
