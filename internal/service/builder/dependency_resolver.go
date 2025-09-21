@@ -7,9 +7,17 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/pkg/logger"
 )
+
+// DefaultServiceFactory interface for type checking
+type DefaultServiceFactory interface {
+	ServiceFactory
+	CreateWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, slackNotifier interface{}) WorkflowExecutor
+	CreatePRWatcherWithSlack(githubClient GitHubClientInterface, cfg *config.Config, slackNotifier interface{}) PRWatcher
+}
 
 // DependencyResolver resolves component dependencies with proper error handling
 type DependencyResolver struct {
@@ -64,6 +72,12 @@ func (r *DependencyResolver) ResolveClients() (*ResolvedClients, error) {
 	// Tmux Client (必須)
 	clients.TmuxClient = tmux.NewClient()
 
+	// Slack Client (オプショナル)
+	if r.config.Slack.NotificationsEnabled && r.config.Slack.WebhookURL != "" {
+		slackClient := slack.NewClient(r.config.Slack.WebhookURL, 10*time.Second)
+		clients.SlackNotifier = slack.NewNotifier(slackClient, &r.config.Slack)
+	}
+
 	return clients, nil
 }
 
@@ -80,7 +94,17 @@ func (r *DependencyResolver) ResolveServices(clients *ResolvedClients) (*Resolve
 	services.WorkspaceManager = workspace
 
 	// Phase 2: Create workflow executor with nil processor (will be set later)
-	workflowExecutor := serviceFactory.CreateWorkflowExecutor(clients.TmuxClient, workspace, nil)
+	var workflowExecutor WorkflowExecutor
+	if clients.SlackNotifier != nil {
+		// Create workflow executor with Slack notifications if available
+		if factory, ok := serviceFactory.(DefaultServiceFactory); ok {
+			workflowExecutor = factory.CreateWorkflowExecutorWithSlack(clients.TmuxClient, workspace, nil, clients.SlackNotifier)
+		} else {
+			workflowExecutor = serviceFactory.CreateWorkflowExecutor(clients.TmuxClient, workspace, nil)
+		}
+	} else {
+		workflowExecutor = serviceFactory.CreateWorkflowExecutor(clients.TmuxClient, workspace, nil)
+	}
 	services.WorkflowExecutor = workflowExecutor
 
 	// Phase 3: Create issue processor with workflow executor
@@ -125,6 +149,12 @@ func (r *DependencyResolver) createIssueWatcher(clients *ResolvedClients, proces
 
 // createPRWatcher creates PR watcher
 func (r *DependencyResolver) createPRWatcher(clients *ResolvedClients) PRWatcher {
+	if clients.SlackNotifier != nil {
+		// Create PR watcher with Slack notifications if available
+		if factory, ok := serviceFactory.(DefaultServiceFactory); ok {
+			return factory.CreatePRWatcherWithSlack(clients.GitHubClient, r.config, clients.SlackNotifier)
+		}
+	}
 	return serviceFactory.CreatePRWatcher(clients.GitHubClient, r.config)
 }
 
@@ -141,9 +171,10 @@ func (r *DependencyResolver) createCleanupService(clients *ResolvedClients) Clos
 
 // ResolvedClients holds resolved client dependencies
 type ResolvedClients struct {
-	GitHubClient GitHubClientInterface
-	GitClient    interface{} // Can be *git.Client or *MockGitClient
-	TmuxClient   tmux.TmuxClient
+	GitHubClient  GitHubClientInterface
+	GitClient     interface{} // Can be *git.Client or *MockGitClient
+	TmuxClient    tmux.TmuxClient
+	SlackNotifier *slack.Notifier // オプショナル
 }
 
 // ResolvedServices holds resolved service dependencies
