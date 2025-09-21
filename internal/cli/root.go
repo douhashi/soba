@@ -16,11 +16,21 @@ var (
 	Date    string
 )
 
-var rootCmd = &cobra.Command{
-	Use:   "soba",
-	Short: "GitHub to Claude Code workflow automation",
-	Long: `Soba is an autonomous CLI tool that fully automates GitHub Issue-driven
+var rootCmd = newRootCmd()
+
+func newRootCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "soba",
+		Short: "GitHub to Claude Code workflow automation",
+		Long: `Soba is an autonomous CLI tool that fully automates GitHub Issue-driven
 development workflows through seamless integration with Claude Code AI.`,
+	}
+
+	// Add subcommands
+	cmd.AddCommand(newVersionCommand())
+	cmd.AddCommand(newInitCmd())
+
+	return cmd
 }
 
 func Execute(version, commit, date string) error {
@@ -35,8 +45,6 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file path")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-
-	rootCmd.AddCommand(newVersionCommand())
 }
 
 func initConfig() {
