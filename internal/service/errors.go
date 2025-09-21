@@ -36,3 +36,22 @@ func NewDaemonError(component, reason string) error {
 func WrapServiceError(err error, message string) error {
 	return errors.WrapInternal(err, message)
 }
+
+// NewTmuxManagementError はtmux管理エラーを作成
+func NewTmuxManagementError(operation, target, reason string) error {
+	msg := fmt.Sprintf("tmux %s failed for %s: %s", operation, target, reason)
+	var err error = errors.NewInternalError(msg)
+	err = errors.WithContext(err, "operation", operation)
+	err = errors.WithContext(err, "target", target)
+	return err
+}
+
+// NewCommandExecutionError はコマンド実行エラーを作成
+func NewCommandExecutionError(command, phase string, issueNum int, reason string) error {
+	msg := fmt.Sprintf("command execution failed for phase '%s' on issue #%d: %s", phase, issueNum, reason)
+	var err error = errors.NewInternalError(msg)
+	err = errors.WithContext(err, "command", command)
+	err = errors.WithContext(err, "phase", phase)
+	err = errors.WithContext(err, "issue_number", issueNum)
+	return err
+}

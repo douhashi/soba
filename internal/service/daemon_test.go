@@ -97,14 +97,22 @@ func TestDaemonService_IsRunning(t *testing.T) {
 
 // MockIssueProcessor はテスト用のモックプロセッサ
 type MockIssueProcessor struct {
-	processFunc   func(ctx context.Context, cfg *config.Config) error
-	processCalled bool
+	processFunc      func(ctx context.Context, cfg *config.Config) error
+	processCalled    bool
+	updateLabelsFunc func(ctx context.Context, issueNumber int, removeLabel, addLabel string) error
 }
 
 func (m *MockIssueProcessor) Process(ctx context.Context, cfg *config.Config) error {
 	m.processCalled = true
 	if m.processFunc != nil {
 		return m.processFunc(ctx, cfg)
+	}
+	return nil
+}
+
+func (m *MockIssueProcessor) UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
+	if m.updateLabelsFunc != nil {
+		return m.updateLabelsFunc(ctx, issueNumber, removeLabel, addLabel)
 	}
 	return nil
 }
