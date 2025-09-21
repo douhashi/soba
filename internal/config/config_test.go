@@ -1,9 +1,11 @@
 package config
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -238,5 +240,203 @@ func TestConfigStructFields(t *testing.T) {
 
 	if reflect.TypeOf(cfg.Phase).Kind() != reflect.Struct {
 		t.Errorf("Phase config should be a struct")
+	}
+}
+
+func TestExpandEnvVarsWithConditionalWarnings(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         Config
+		content        string
+		expectedWarn   []string
+		unexpectedWarn []string
+	}{
+		{
+			name: "GITHUB_TOKEN warning when auth_method is env",
+			config: Config{
+				GitHub: GitHubConfig{AuthMethod: "env"},
+			},
+			content:        "token: ${GITHUB_TOKEN}",
+			expectedWarn:   []string{"Warning: undefined environment variable: GITHUB_TOKEN"},
+			unexpectedWarn: []string{},
+		},
+		{
+			name: "No GITHUB_TOKEN warning when auth_method is gh",
+			config: Config{
+				GitHub: GitHubConfig{AuthMethod: "gh"},
+			},
+			content:        "token: ${GITHUB_TOKEN}",
+			expectedWarn:   []string{},
+			unexpectedWarn: []string{"Warning: undefined environment variable: GITHUB_TOKEN"},
+		},
+		{
+			name: "SLACK_WEBHOOK_URL warning when notifications_enabled is true",
+			config: Config{
+				Slack: SlackConfig{NotificationsEnabled: true},
+			},
+			content:        "webhook_url: ${SLACK_WEBHOOK_URL}",
+			expectedWarn:   []string{"Warning: undefined environment variable: SLACK_WEBHOOK_URL"},
+			unexpectedWarn: []string{},
+		},
+		{
+			name: "No SLACK_WEBHOOK_URL warning when notifications_enabled is false",
+			config: Config{
+				Slack: SlackConfig{NotificationsEnabled: false},
+			},
+			content:        "webhook_url: ${SLACK_WEBHOOK_URL}",
+			expectedWarn:   []string{},
+			unexpectedWarn: []string{"Warning: undefined environment variable: SLACK_WEBHOOK_URL"},
+		},
+		{
+			name: "Both warnings when both conditions are met",
+			config: Config{
+				GitHub: GitHubConfig{AuthMethod: "env"},
+				Slack:  SlackConfig{NotificationsEnabled: true},
+			},
+			content: "token: ${GITHUB_TOKEN}\nwebhook_url: ${SLACK_WEBHOOK_URL}",
+			expectedWarn: []string{
+				"Warning: undefined environment variable: GITHUB_TOKEN",
+				"Warning: undefined environment variable: SLACK_WEBHOOK_URL",
+			},
+			unexpectedWarn: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Capture stderr
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			// Unset environment variables to trigger warnings
+			os.Unsetenv("GITHUB_TOKEN")
+			os.Unsetenv("SLACK_WEBHOOK_URL")
+
+			// Call expandEnvVarsWithConfig (function we'll implement)
+			result := expandEnvVarsWithConfig(tt.content, &tt.config)
+
+			// Restore stderr and capture output
+			w.Close()
+			os.Stderr = oldStderr
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			stderrOutput := buf.String()
+
+			// Check for expected warnings
+			for _, expectedWarn := range tt.expectedWarn {
+				if !strings.Contains(stderrOutput, expectedWarn) {
+					t.Errorf("Expected warning '%s' not found in stderr: %s", expectedWarn, stderrOutput)
+				}
+			}
+
+			// Check for unexpected warnings
+			for _, unexpectedWarn := range tt.unexpectedWarn {
+				if strings.Contains(stderrOutput, unexpectedWarn) {
+					t.Errorf("Unexpected warning '%s' found in stderr: %s", unexpectedWarn, stderrOutput)
+				}
+			}
+
+			// Verify result contains unexpanded variables when warnings occur
+			if len(tt.expectedWarn) > 0 {
+				if !strings.Contains(result, "${") {
+					t.Errorf("Expected unexpanded variables in result when warnings occur: %s", result)
+				}
+			}
+		})
+	}
+}
+
+func TestLoadConfigWithConditionalWarnings(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	tests := []struct {
+		name          string
+		configContent string
+		expectedWarn  []string
+	}{
+		{
+			name: "No warnings with default config (auth_method=gh, notifications_enabled=false)",
+			configContent: `
+github:
+  auth_method: gh
+  token: ${GITHUB_TOKEN}
+  repository: owner/repo
+
+slack:
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  notifications_enabled: false
+`,
+			expectedWarn: []string{},
+		},
+		{
+			name: "GITHUB_TOKEN warning with auth_method=env",
+			configContent: `
+github:
+  auth_method: env
+  token: ${GITHUB_TOKEN}
+  repository: owner/repo
+
+slack:
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  notifications_enabled: false
+`,
+			expectedWarn: []string{"Warning: undefined environment variable: GITHUB_TOKEN"},
+		},
+		{
+			name: "SLACK_WEBHOOK_URL warning with notifications_enabled=true",
+			configContent: `
+github:
+  auth_method: gh
+  token: ${GITHUB_TOKEN}
+  repository: owner/repo
+
+slack:
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  notifications_enabled: true
+`,
+			expectedWarn: []string{"Warning: undefined environment variable: SLACK_WEBHOOK_URL"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Capture stderr
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			// Unset environment variables to trigger warnings
+			os.Unsetenv("GITHUB_TOKEN")
+			os.Unsetenv("SLACK_WEBHOOK_URL")
+
+			err := os.WriteFile(configPath, []byte(tt.configContent), 0644)
+			if err != nil {
+				t.Fatalf("Failed to write test config file: %v", err)
+			}
+
+			_, err = Load(configPath)
+			if err != nil {
+				t.Fatalf("Failed to load config: %v", err)
+			}
+
+			// Restore stderr and capture output
+			w.Close()
+			os.Stderr = oldStderr
+			var buf bytes.Buffer
+			buf.ReadFrom(r)
+			stderrOutput := buf.String()
+
+			// Check for expected warnings
+			for _, expectedWarn := range tt.expectedWarn {
+				if !strings.Contains(stderrOutput, expectedWarn) {
+					t.Errorf("Expected warning '%s' not found in stderr: %s", expectedWarn, stderrOutput)
+				}
+			}
+
+			// Remove test file for next iteration
+			os.Remove(configPath)
+		})
 	}
 }
