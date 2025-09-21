@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/douhashi/soba/internal/config"
-	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
+	"github.com/douhashi/soba/internal/service/builder"
 	"github.com/douhashi/soba/pkg/errors"
 	"github.com/douhashi/soba/pkg/logger"
 )
@@ -34,67 +34,57 @@ type IssueProcessorInterface interface {
 }
 
 type daemonService struct {
-	workDir   string
-	processor IssueProcessorInterface
-	watcher   *IssueWatcher
-	prWatcher *PRWatcher
-	tmux      tmux.TmuxClient
+	workDir                   string
+	processor                 IssueProcessorInterface
+	watcher                   *IssueWatcher
+	prWatcher                 *PRWatcher
+	closedIssueCleanupService *ClosedIssueCleanupService
+	tmux                      tmux.TmuxClient
 }
 
-// NewDaemonService creates a new daemon service
+// init initializes the service factory
+func init() {
+	builder.SetServiceFactory(&DefaultServiceFactory{})
+}
+
+// NewDaemonService creates a new daemon service using ServiceBuilder
 func NewDaemonService() DaemonService {
-	workDir, _ := os.Getwd()
-
-	// デフォルト設定を作成（後で実際の設定で上書きされる）
-	defaultCfg := &config.Config{
-		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
-			BaseBranch:       "main",
-		},
-	}
-
-	// 依存関係を初期化
-	tokenProvider := github.NewDefaultTokenProvider()
-	githubClient, _ := github.NewClient(tokenProvider, &github.ClientOptions{})
-	tmuxClient := tmux.NewClient()
-
-	// Git クライアントとワークスペースマネージャーを初期化
-	gitClient, err := git.NewClient(workDir)
+	serviceBuilder := builder.NewServiceBuilder()
+	service, err := serviceBuilder.Build()
 	if err != nil {
 		log := logger.GetLogger()
-		log.Error("Failed to initialize git client", "error", err)
-		return nil
+		log.Error("Failed to create daemon service", "error", err)
+		// Return minimal fallback service
+		return createFallbackService()
 	}
-	workspace := NewGitWorkspaceManager(defaultCfg, gitClient)
+	return service
+}
 
-	// GitHubクライアント付きでProcessorを初期化
-	processor := NewIssueProcessor(githubClient, nil)
-
-	// ProcessorをExecutorに渡す
-	executor := NewWorkflowExecutor(tmuxClient, workspace, processor)
-
-	// ProcessorにExecutorを設定（循環依存を解決）
-	processorWithDeps := NewIssueProcessor(githubClient, executor)
-
-	// QueueManagerを初期化（owner/repoは後で設定）
-	queueManager := NewQueueManager(githubClient, "", "")
-
-	// IssueWatcherを初期化
-	// 注: configは後でStartForeground/StartDaemonで設定される
-	watcher := NewIssueWatcher(githubClient, &config.Config{})
-	watcher.SetProcessor(processorWithDeps)
-	watcher.SetQueueManager(queueManager)
-	watcher.SetWorkflowExecutor(executor)
-
-	// PRWatcherを初期化
-	prWatcher := NewPRWatcher(githubClient, &config.Config{})
-
+// NewDaemonServiceWithDependencies creates daemon service with injected dependencies
+func NewDaemonServiceWithDependencies(
+	workDir string,
+	processor IssueProcessorInterface,
+	watcher *IssueWatcher,
+	prWatcher *PRWatcher,
+	cleanupService *ClosedIssueCleanupService,
+	tmuxClient tmux.TmuxClient,
+) DaemonService {
 	return &daemonService{
-		workDir:   workDir,
-		processor: processorWithDeps,
-		watcher:   watcher,
-		prWatcher: prWatcher,
-		tmux:      tmuxClient,
+		workDir:                   workDir,
+		processor:                 processor,
+		watcher:                   watcher,
+		prWatcher:                 prWatcher,
+		closedIssueCleanupService: cleanupService,
+		tmux:                      tmuxClient,
+	}
+}
+
+// createFallbackService creates minimal working service for emergency fallback
+func createFallbackService() DaemonService {
+	workDir, _ := os.Getwd()
+	return &daemonService{
+		workDir: workDir,
+		// All services initialized as nil - configureAndStartWatchers handles nil checks
 	}
 }
 
@@ -147,13 +137,21 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 		return err
 	}
 
+	// watchers設定と起動（共通処理を使用）
+	return d.configureAndStartWatchers(ctx, cfg, log)
+}
+
+// configureAndStartWatchers はwatchersの設定と起動を行う共通処理
+func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 	// IssueWatcherに設定を反映
-	d.watcher.config = cfg
-	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-	d.watcher.SetLogger(log)
+	if d.watcher != nil {
+		d.watcher.config = cfg
+		d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
+		d.watcher.SetLogger(log)
+	}
 
 	// QueueManagerにowner/repoを設定
-	if d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
+	if d.watcher != nil && d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
 		parts := strings.Split(cfg.GitHub.Repository, "/")
 		if len(parts) == 2 {
 			d.watcher.queueManager.owner = parts[0]
@@ -169,21 +167,47 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 		d.prWatcher.SetLogger(log)
 	}
 
-	// IssueWatcherとPRWatcherを並行して起動
-	errCh := make(chan error, 2)
+	// ClosedIssueCleanupServiceを設定
+	if cfg.GitHub.Repository != "" {
+		parts := strings.Split(cfg.GitHub.Repository, "/")
+		if len(parts) == 2 {
+			sessionName := fmt.Sprintf("soba-%s", parts[1])
+			interval := time.Duration(cfg.Workflow.ClosedIssueCleanupInterval) * time.Second
+			d.closedIssueCleanupService.Configure(
+				parts[0], parts[1], sessionName,
+				cfg.Workflow.ClosedIssueCleanupEnabled, interval,
+			)
+		}
+	}
+
+	// IssueWatcher、PRWatcher、ClosedIssueCleanupServiceを並行して起動
+	errCh := make(chan error, 3)
 
 	// IssueWatcherを起動
 	go func() {
-		errCh <- d.watcher.Start(ctx)
+		if d.watcher != nil {
+			errCh <- d.watcher.Start(ctx)
+		} else {
+			errCh <- nil
+		}
 	}()
 
 	// PRWatcherを起動
 	go func() {
-		errCh <- d.prWatcher.Start(ctx)
+		if d.prWatcher != nil {
+			errCh <- d.prWatcher.Start(ctx)
+		} else {
+			errCh <- nil
+		}
 	}()
 
-	// どちらかがエラーで終了したら全体を終了
-	for i := 0; i < 2; i++ {
+	// ClosedIssueCleanupServiceを起動
+	go func() {
+		errCh <- d.closedIssueCleanupService.Start(ctx)
+	}()
+
+	// どれかがエラーで終了したら全体を終了
+	for i := 0; i < 3; i++ {
 		if err := <-errCh; err != nil {
 			return err
 		}
@@ -222,52 +246,8 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 
 	log.Info("Daemon started successfully")
 
-	// フォアグラウンドモードと同じ処理を実行（セッション初期化は既に完了）
-	// 実際のデーモン化はここでは簡略化（本来はfork等が必要）
-	// StartForegroundを呼ばずに直接watcherを起動
-	// IssueWatcherに設定を反映
-	d.watcher.config = cfg
-	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-	d.watcher.SetLogger(log)
-
-	// QueueManagerにowner/repoを設定
-	if d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
-		parts := strings.Split(cfg.GitHub.Repository, "/")
-		if len(parts) == 2 {
-			d.watcher.queueManager.owner = parts[0]
-			d.watcher.queueManager.repo = parts[1]
-			d.watcher.queueManager.SetLogger(log)
-		}
-	}
-
-	// PRWatcherに設定を反映
-	if d.prWatcher != nil {
-		d.prWatcher.config = cfg
-		d.prWatcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-		d.prWatcher.SetLogger(log)
-	}
-
-	// IssueWatcherとPRWatcherを並行して起動
-	errCh := make(chan error, 2)
-
-	// IssueWatcherを起動
-	go func() {
-		errCh <- d.watcher.Start(ctx)
-	}()
-
-	// PRWatcherを起動
-	go func() {
-		errCh <- d.prWatcher.Start(ctx)
-	}()
-
-	// どちらかがエラーで終了したら全体を終了
-	for i := 0; i < 2; i++ {
-		if err := <-errCh; err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// watchers設定と起動（共通処理を使用）
+	return d.configureAndStartWatchers(ctx, cfg, log)
 }
 
 // IsRunning checks if daemon is currently running
