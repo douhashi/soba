@@ -2,102 +2,105 @@ package github
 
 import (
 	"context"
-	"fmt"
 
-	"github.com/douhashi/soba/internal/infra"
+	"github.com/stretchr/testify/mock"
 )
 
 // MockClient はGitHub APIクライアントのモック実装
 type MockClient struct {
-	// ListOpenIssuesのモック設定
-	ListOpenIssuesFunc  func(ctx context.Context, owner, repo string, opts *ListIssuesOptions) ([]Issue, bool, error)
-	ListOpenIssuesCalls []struct {
-		Owner string
-		Repo  string
-		Opts  *ListIssuesOptions
-	}
-
-	// エラーを返すかどうか
-	ShouldError bool
-	Error       error
-
-	// 返すデータ
-	Issues  []Issue
-	HasNext bool
+	mock.Mock
 }
 
 // NewMockClient は新しいMockClientを作成する
 func NewMockClient() *MockClient {
-	return &MockClient{
-		Issues: []Issue{},
+	return &MockClient{}
+}
+
+// ListIssues のモック実装
+func (m *MockClient) ListIssues(ctx context.Context, owner, repo string, opts ListIssuesOptions) ([]Issue, error) {
+	args := m.Called(ctx, owner, repo, opts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
+	return args.Get(0).([]Issue), args.Error(1)
 }
 
 // ListOpenIssues のモック実装
 func (m *MockClient) ListOpenIssues(ctx context.Context, owner, repo string, opts *ListIssuesOptions) ([]Issue, bool, error) {
-	// 呼び出しを記録
-	m.ListOpenIssuesCalls = append(m.ListOpenIssuesCalls, struct {
-		Owner string
-		Repo  string
-		Opts  *ListIssuesOptions
-	}{
-		Owner: owner,
-		Repo:  repo,
-		Opts:  opts,
-	})
-
-	// カスタム関数が設定されている場合はそれを使用
-	if m.ListOpenIssuesFunc != nil {
-		return m.ListOpenIssuesFunc(ctx, owner, repo, opts)
+	args := m.Called(ctx, owner, repo, opts)
+	if args.Get(0) == nil {
+		return nil, false, args.Error(2)
 	}
+	return args.Get(0).([]Issue), args.Bool(1), args.Error(2)
+}
 
-	// エラーを返す設定の場合
-	if m.ShouldError {
-		if m.Error != nil {
-			return nil, false, m.Error
-		}
-		return nil, false, infra.NewGitHubAPIError(500, "/repos/"+owner+"/"+repo+"/issues", "mock error")
+// Label関連のモック実装
+func (m *MockClient) CreateLabel(ctx context.Context, owner, repo string, label CreateLabelRequest) (*Label, error) {
+	args := m.Called(ctx, owner, repo, label)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-
-	// 正常なレスポンスを返す
-	return m.Issues, m.HasNext, nil
+	return args.Get(0).(*Label), args.Error(1)
 }
 
-// SetupSuccessResponse はモックの成功レスポンスを設定する
-func (m *MockClient) SetupSuccessResponse(issues []Issue, hasNext bool) {
-	m.Issues = issues
-	m.HasNext = hasNext
-	m.ShouldError = false
-	m.Error = nil
-}
-
-// SetupErrorResponse はモックのエラーレスポンスを設定する
-func (m *MockClient) SetupErrorResponse(statusCode int, message string) {
-	m.ShouldError = true
-	m.Error = infra.NewGitHubAPIError(statusCode, "/repos/test/test/issues", message)
-}
-
-// Reset はモックの状態をリセットする
-func (m *MockClient) Reset() {
-	m.ListOpenIssuesCalls = nil
-	m.ListOpenIssuesFunc = nil
-	m.ShouldError = false
-	m.Error = nil
-	m.Issues = []Issue{}
-	m.HasNext = false
-}
-
-// AssertCalled は指定された呼び出しがされたか確認する
-func (m *MockClient) AssertCalled(owner, repo string) error {
-	for _, call := range m.ListOpenIssuesCalls {
-		if call.Owner == owner && call.Repo == repo {
-			return nil
-		}
+func (m *MockClient) ListLabels(ctx context.Context, owner, repo string) ([]Label, error) {
+	args := m.Called(ctx, owner, repo)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
-	return fmt.Errorf("ListOpenIssues was not called with owner=%s, repo=%s", owner, repo)
+	return args.Get(0).([]Label), args.Error(1)
 }
 
-// CallCount は呼び出し回数を返す
-func (m *MockClient) CallCount() int {
-	return len(m.ListOpenIssuesCalls)
+func (m *MockClient) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, labels)
+	return args.Error(0)
+}
+
+func (m *MockClient) AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, label)
+	return args.Error(0)
+}
+
+func (m *MockClient) RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, label)
+	return args.Error(0)
+}
+
+// Pull Request関連のモック実装
+func (m *MockClient) GetPullRequest(ctx context.Context, owner, repo string, number int) (*PullRequest, bool, error) {
+	args := m.Called(ctx, owner, repo, number)
+	if args.Get(0) == nil {
+		return nil, false, args.Error(2)
+	}
+	return args.Get(0).(*PullRequest), args.Bool(1), args.Error(2)
+}
+
+func (m *MockClient) ListPullRequests(ctx context.Context, owner, repo string, opts *ListPullRequestsOptions) ([]PullRequest, bool, error) {
+	args := m.Called(ctx, owner, repo, opts)
+	if args.Get(0) == nil {
+		return nil, false, args.Error(2)
+	}
+	return args.Get(0).([]PullRequest), args.Bool(1), args.Error(2)
+}
+
+func (m *MockClient) MergePullRequest(ctx context.Context, owner, repo string, number int, mergeReq *MergeRequest) (*MergeResponse, error) {
+	args := m.Called(ctx, owner, repo, number, mergeReq)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*MergeResponse), args.Error(1)
+}
+
+// Comment関連のモック実装
+func (m *MockClient) CreateComment(ctx context.Context, owner, repo string, issueNumber int, body string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, body)
+	return args.Error(0)
+}
+
+func (m *MockClient) ListComments(ctx context.Context, owner, repo string, issueNumber int, opts *ListCommentsOptions) ([]IssueComment, error) {
+	args := m.Called(ctx, owner, repo, issueNumber, opts)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]IssueComment), args.Error(1)
 }

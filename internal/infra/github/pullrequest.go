@@ -12,7 +12,7 @@ import (
 )
 
 // ListPullRequests は指定されたリポジトリのPR一覧を取得する
-func (c *Client) ListPullRequests(ctx context.Context, owner, repo string, opts *ListPullRequestsOptions) ([]PullRequest, bool, error) {
+func (c *ClientImpl) ListPullRequests(ctx context.Context, owner, repo string, opts *ListPullRequestsOptions) ([]PullRequest, bool, error) {
 	// バリデーション
 	if owner == "" {
 		return nil, false, infra.NewGitHubAPIError(0, "", "owner is required")
@@ -84,7 +84,7 @@ func (c *Client) ListPullRequests(ctx context.Context, owner, repo string, opts 
 }
 
 // GetPullRequest は指定されたPRの詳細を取得する
-func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, number int) (*PullRequest, bool, error) {
+func (c *ClientImpl) GetPullRequest(ctx context.Context, owner, repo string, number int) (*PullRequest, bool, error) {
 	// バリデーション
 	if owner == "" {
 		return nil, false, infra.NewGitHubAPIError(0, "", "owner is required")
@@ -130,7 +130,7 @@ func (c *Client) GetPullRequest(ctx context.Context, owner, repo string, number 
 }
 
 // MergePullRequest は指定されたPRをマージする
-func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, number int, req *MergeRequest) (*MergeResponse, error) {
+func (c *ClientImpl) MergePullRequest(ctx context.Context, owner, repo string, number int, req *MergeRequest) (*MergeResponse, error) {
 	// バリデーション
 	if owner == "" {
 		return nil, infra.NewGitHubAPIError(0, "", "owner is required")
@@ -196,7 +196,7 @@ func (c *Client) MergePullRequest(ctx context.Context, owner, repo string, numbe
 }
 
 // buildPullRequestsURL はPR一覧取得用のURLを構築する
-func (c *Client) buildPullRequestsURL(owner, repo string, opts *ListPullRequestsOptions) string {
+func (c *ClientImpl) buildPullRequestsURL(owner, repo string, opts *ListPullRequestsOptions) string {
 	baseURL := fmt.Sprintf("%s/repos/%s/%s/pulls", c.baseURL, owner, repo)
 
 	// クエリパラメータの構築
@@ -223,7 +223,7 @@ func (c *Client) buildPullRequestsURL(owner, repo string, opts *ListPullRequests
 }
 
 // hasNextPage はレスポンスヘッダーから次のページがあるか判定する
-func (c *Client) hasNextPage(resp *http.Response) bool {
+func (c *ClientImpl) hasNextPage(resp *http.Response) bool {
 	linkHeader := resp.Header.Get("Link")
 	if linkHeader == "" {
 		return false

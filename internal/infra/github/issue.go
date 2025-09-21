@@ -11,8 +11,56 @@ import (
 	"github.com/douhashi/soba/internal/infra"
 )
 
+// ListIssues は指定されたリポジトリのIssue一覧を取得する
+func (c *ClientImpl) ListIssues(ctx context.Context, owner, repo string, opts ListIssuesOptions) ([]Issue, error) {
+	// バリデーション
+	if owner == "" {
+		return nil, infra.NewGitHubAPIError(0, "", "owner is required")
+	}
+	if repo == "" {
+		return nil, infra.NewGitHubAPIError(0, "", "repo is required")
+	}
+
+	// デフォルトオプションの設定
+	if opts.Page == 0 {
+		opts.Page = 1
+	}
+	if opts.PerPage == 0 {
+		opts.PerPage = 30
+	}
+
+	// URLの構築
+	apiURL := c.buildIssuesURL(owner, repo, &opts)
+
+	// HTTPリクエストの作成
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return nil, infra.WrapInfraError(err, "failed to create request")
+	}
+
+	// リクエストの実行
+	resp, err := c.doRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// エラーレスポンスの処理
+	if resp.StatusCode != http.StatusOK {
+		return nil, c.parseErrorResponse(resp)
+	}
+
+	// レスポンスのパース
+	var issues []Issue
+	if err := json.NewDecoder(resp.Body).Decode(&issues); err != nil {
+		return nil, infra.WrapInfraError(err, "failed to decode response")
+	}
+
+	return issues, nil
+}
+
 // ListOpenIssues は指定されたリポジトリのオープンなIssue一覧を取得する
-func (c *Client) ListOpenIssues(ctx context.Context, owner, repo string, opts *ListIssuesOptions) ([]Issue, bool, error) {
+func (c *ClientImpl) ListOpenIssues(ctx context.Context, owner, repo string, opts *ListIssuesOptions) ([]Issue, bool, error) {
 	// バリデーション
 	if owner == "" {
 		return nil, false, infra.NewGitHubAPIError(0, "", "owner is required")
@@ -75,7 +123,7 @@ func (c *Client) ListOpenIssues(ctx context.Context, owner, repo string, opts *L
 }
 
 // buildIssuesURL はIssue取得用のURLを構築する
-func (c *Client) buildIssuesURL(owner, repo string, opts *ListIssuesOptions) string {
+func (c *ClientImpl) buildIssuesURL(owner, repo string, opts *ListIssuesOptions) string {
 	baseURL := fmt.Sprintf("%s/repos/%s/%s/issues", c.baseURL, owner, repo)
 
 	params := url.Values{}
