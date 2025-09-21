@@ -58,16 +58,69 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 	}
 
 	// ラベルを更新
-	if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, transition.From, transition.To); err != nil {
-		log.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", transition.From, "to", transition.To)
-		return WrapServiceError(err, "failed to update labels")
+	if err := e.updateLabels(ctx, issueNumber, transition); err != nil {
+		return err
 	}
 
-	log.Debug("Updated labels", "issue", issueNumber, "from", transition.From, "to", transition.To)
+	// Planフェーズ開始時にworktreeを準備
+	if err := e.prepareWorkspaceIfNeeded(phase, issueNumber); err != nil {
+		return err
+	}
 
 	// tmuxセッション管理
 	sessionName := DefaultSessionName
 	windowName := fmt.Sprintf("issue-%d", issueNumber)
+
+	// tmuxセッションとウィンドウのセットアップ
+	if err := e.setupTmuxSession(sessionName, windowName); err != nil {
+		return err
+	}
+
+	// ペイン管理
+	if err := e.managePane(sessionName, windowName); err != nil {
+		log.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
+		return err
+	}
+
+	// コマンド実行
+	if err := e.executeCommand(cfg, issueNumber, phase, sessionName, windowName); err != nil {
+		return err
+	}
+
+	log.Info("Phase execution completed", "issue", issueNumber, "phase", phase)
+	return nil
+}
+
+// updateLabels はラベルを更新する
+func (e *workflowExecutor) updateLabels(ctx context.Context, issueNumber int, transition *domain.PhaseTransition) error {
+	log := logger.NewNopLogger()
+	if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, transition.From, transition.To); err != nil {
+		log.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", transition.From, "to", transition.To)
+		return WrapServiceError(err, "failed to update labels")
+	}
+	log.Debug("Updated labels", "issue", issueNumber, "from", transition.From, "to", transition.To)
+	return nil
+}
+
+// prepareWorkspaceIfNeeded はPlanフェーズ開始時にworktreeを準備する
+func (e *workflowExecutor) prepareWorkspaceIfNeeded(phase domain.Phase, issueNumber int) error {
+	if phase != domain.PhasePlan || e.workspace == nil {
+		return nil
+	}
+
+	log := logger.NewNopLogger()
+	log.Info("Preparing workspace for issue", "issue", issueNumber)
+	if err := e.workspace.PrepareWorkspace(issueNumber); err != nil {
+		log.Error("Failed to prepare workspace", "error", err, "issue", issueNumber)
+		return WrapServiceError(err, "failed to prepare workspace")
+	}
+	log.Debug("Workspace prepared", "issue", issueNumber)
+	return nil
+}
+
+// setupTmuxSession はtmuxセッションとウィンドウをセットアップする
+func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) error {
+	log := logger.NewNopLogger()
 
 	// セッションが存在しなければ作成
 	if !e.tmux.SessionExists(sessionName) {
@@ -93,23 +146,35 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 		log.Debug("Created tmux window", "session", sessionName, "window", windowName)
 	}
 
-	// ペイン管理
-	if err := e.managePane(sessionName, windowName); err != nil {
-		log.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
-		return err
+	return nil
+}
+
+// executeCommand はフェーズコマンドを実行する
+func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, phase domain.Phase, sessionName, windowName string) error {
+	log := logger.NewNopLogger()
+
+	command := e.buildCommand(e.getPhaseCommand(cfg, phase), issueNumber)
+	if command == "" {
+		return nil
 	}
 
-	// コマンド構築と実行
-	command := e.buildCommand(e.getPhaseCommand(cfg, phase), issueNumber)
-	if command != "" {
-		// 最初のペインインデックスを取得
-		paneIndex, err := e.tmux.GetFirstPaneIndex(sessionName, windowName)
-		if err != nil {
-			log.Error("Failed to get first pane index", "error", err, "session", sessionName, "window", windowName)
-			return NewTmuxManagementError("get pane index", windowName, err.Error())
-		}
+	// 最初のペインインデックスを取得
+	paneIndex, err := e.tmux.GetFirstPaneIndex(sessionName, windowName)
+	if err != nil {
+		log.Error("Failed to get first pane index", "error", err, "session", sessionName, "window", windowName)
+		return NewTmuxManagementError("get pane index", windowName, err.Error())
+	}
 
-		// コマンド送信
+	// worktreeを必要とするフェーズかチェック
+	if requiresWorktree(phase) {
+		worktreeDir := fmt.Sprintf("%s/issue-%d", cfg.Git.WorktreeBasePath, issueNumber)
+		cdCommand := fmt.Sprintf("cd %s && %s", worktreeDir, command)
+		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, cdCommand); err != nil {
+			log.Error("Failed to send command", "error", err, "command", cdCommand, "pane", paneIndex)
+			return NewCommandExecutionError(cdCommand, string(phase), issueNumber, err.Error())
+		}
+		log.Info("Command sent with worktree cd", "issue", issueNumber, "phase", phase, "worktree", worktreeDir, "command", command)
+	} else {
 		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, command); err != nil {
 			log.Error("Failed to send command", "error", err, "command", command, "pane", paneIndex)
 			return NewCommandExecutionError(command, string(phase), issueNumber, err.Error())
@@ -117,8 +182,12 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 		log.Info("Command sent", "issue", issueNumber, "phase", phase, "command", command)
 	}
 
-	log.Info("Phase execution completed", "issue", issueNumber, "phase", phase)
 	return nil
+}
+
+// requiresWorktree はフェーズがworktreeを必要とするか判定する
+func requiresWorktree(phase domain.Phase) bool {
+	return phase == domain.PhasePlan || phase == domain.PhaseImplement || phase == domain.PhaseRevise
 }
 
 // managePane はペインを管理する（制限数チェック、古いペイン削除、新規作成、リサイズ）

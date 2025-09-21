@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/infra/github"
 )
 
 func TestNewDaemonService(t *testing.T) {
@@ -100,6 +101,7 @@ type MockIssueProcessor struct {
 	processFunc      func(ctx context.Context, cfg *config.Config) error
 	processCalled    bool
 	updateLabelsFunc func(ctx context.Context, issueNumber int, removeLabel, addLabel string) error
+	ProcessIssueFunc func(ctx context.Context, cfg *config.Config, issue github.Issue) error
 }
 
 func (m *MockIssueProcessor) Process(ctx context.Context, cfg *config.Config) error {
@@ -113,6 +115,13 @@ func (m *MockIssueProcessor) Process(ctx context.Context, cfg *config.Config) er
 func (m *MockIssueProcessor) UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
 	if m.updateLabelsFunc != nil {
 		return m.updateLabelsFunc(ctx, issueNumber, removeLabel, addLabel)
+	}
+	return nil
+}
+
+func (m *MockIssueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, issue github.Issue) error {
+	if m.ProcessIssueFunc != nil {
+		return m.ProcessIssueFunc(ctx, cfg, issue)
 	}
 	return nil
 }
