@@ -240,8 +240,8 @@ func TestClient_ListLabels(t *testing.T) {
 func TestGetSobaLabels(t *testing.T) {
 	labels := GetSobaLabels()
 
-	// 11個のラベルが定義されていることを確認
-	assert.Len(t, labels, 11)
+	// 10個のラベルが定義されていることを確認
+	assert.Len(t, labels, 10)
 
 	// 各ラベルの内容を検証
 	expectedLabels := map[string]struct {
@@ -258,7 +258,6 @@ func TestGetSobaLabels(t *testing.T) {
 		"soba:done":             {"0e8a16", "Review approved, ready to merge"},
 		"soba:requires-changes": {"d93f0b", "Review requested modifications"},
 		"soba:revising":         {"ff6347", "Claude applying requested changes"},
-		"soba:merged":           {"6f42c1", "PR merged and issue closed"},
 	}
 
 	for _, label := range labels {

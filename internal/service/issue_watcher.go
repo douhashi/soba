@@ -160,16 +160,27 @@ func (w *IssueWatcher) detectAndLogChanges(issues []github.Issue) {
 
 // processSelectedIssue は選択されたIssueを処理する
 func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess *github.Issue) error {
-	if issueToProcess == nil || w.processor == nil {
+	if issueToProcess == nil || w.workflowExecutor == nil {
 		return nil
 	}
 
-	// selectIssueForProcessingが選択したIssueは処理可能として扱う
-	// （selectIssueForProcessingが既に適切なフィルタリングを行っているため）
+	// トリガーラベルから実行するフェーズを判定
+	var phaseToExecute domain.Phase
+	for _, phaseDef := range domain.PhaseDefinitions {
+		if w.hasLabel(*issueToProcess, phaseDef.TriggerLabel) {
+			phaseToExecute = domain.Phase(phaseDef.Name)
+			break
+		}
+	}
 
-	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number)
-	if err := w.processor.ProcessIssue(ctx, w.config, *issueToProcess); err != nil {
-		w.logger.Error("Failed to process issue", "error", err, "issue", issueToProcess.Number)
+	if phaseToExecute == "" {
+		w.logger.Debug("No trigger label found for issue", "issue", issueToProcess.Number)
+		return nil
+	}
+
+	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number, "phase", phaseToExecute)
+	if err := w.workflowExecutor.ExecutePhase(ctx, w.config, issueToProcess.Number, phaseToExecute); err != nil {
+		w.logger.Error("Failed to execute phase", "error", err, "issue", issueToProcess.Number, "phase", phaseToExecute)
 		return err
 	}
 
@@ -464,14 +475,9 @@ func (w *IssueWatcher) selectIssueForProcessing(issues []github.Issue) *github.I
 func (w *IssueWatcher) checkInProgressIssues(issues []github.Issue) *github.Issue {
 	for _, issue := range issues {
 		if w.isInProgressPhase(issue) {
-			if w.isIssueCompleted(issue) {
-				w.logger.Info("Issue processing completed", "issue", issue.Number)
-				w.currentIssue = nil
-			} else {
-				w.currentIssue = &issue.Number
-				w.logger.Debug("Issue still in progress", "issue", issue.Number)
-				return nil // シングルライン処理のため、他のIssueは処理しない
-			}
+			w.currentIssue = &issue.Number
+			w.logger.Debug("Issue still in progress", "issue", issue.Number)
+			return nil // シングルライン処理のため、他のIssueは処理しない
 		}
 	}
 	return nil
@@ -486,18 +492,21 @@ func (w *IssueWatcher) checkCurrentIssue(issues []github.Issue) bool {
 	currentIssueNumber := *w.currentIssue
 	for _, issue := range issues {
 		if issue.Number == currentIssueNumber {
-			if w.isIssueCompleted(issue) {
-				w.logger.Info("Issue processing completed", "issue", currentIssueNumber)
+			// 進行中ラベルがない場合は、処理が完了したとみなす
+			// （例：soba:planning → soba:readyへの遷移）
+			if !w.isInProgressPhase(issue) {
+				w.logger.Info("Issue phase completed, ready for next phase", "issue", currentIssueNumber)
 				w.currentIssue = nil
 				return false
 			}
+
 			w.logger.Debug("Issue still in progress", "issue", currentIssueNumber)
 			return true
 		}
 	}
 
-	// 処理中のIssueが見つからない場合もクリア
-	w.logger.Warn("Processing issue not found, clearing flag", "issue", currentIssueNumber)
+	// 処理中のIssueが見つからない場合もクリア（Issue closed の場合）
+	w.logger.Info("Processing issue completed (closed)", "issue", currentIssueNumber)
 	w.currentIssue = nil
 	return false
 }
@@ -571,26 +580,36 @@ func (w *IssueWatcher) hasLabel(issue github.Issue, labelName string) bool {
 
 // hasProcessablePhase はIssueが処理可能なフェーズにあるかチェックする
 func (w *IssueWatcher) hasProcessablePhase(issue github.Issue) bool {
-
-	// ラベル名の配列を作成
-	labelNames := make([]string, 0, len(issue.Labels))
-	for _, label := range issue.Labels {
-		labelNames = append(labelNames, label.Name)
+	// トリガーラベルを持つIssueを処理可能とする
+	// (soba:queuedは除外 - processQueuedIssuesで処理される)
+	triggerLabels := []string{
+		domain.LabelReady,           // implementフェーズのトリガー
+		domain.LabelReviewRequested, // reviewフェーズのトリガー
+		domain.LabelRequiresChanges, // reviseフェーズのトリガー
+		domain.LabelDone,            // mergeフェーズのトリガー
 	}
 
-	// 現在のフェーズを判定
-	phase, err := domain.GetCurrentPhaseFromLabels(labelNames)
-	if err != nil {
-		return false
+	for _, triggerLabel := range triggerLabels {
+		if w.hasLabel(issue, triggerLabel) {
+			return true
+		}
 	}
 
-	// 処理可能なフェーズかチェック（Queueは除外 - 別途processQueuedIssuesで処理）
-	switch phase {
-	case domain.PhasePlan, domain.PhaseImplement, domain.PhaseReview, domain.PhaseRevise:
-		return true
-	default:
-		return false
+	// 実行中ラベルを持つIssueも処理継続の対象
+	executionLabels := []string{
+		domain.LabelPlanning,
+		domain.LabelDoing,
+		domain.LabelReviewing,
+		domain.LabelRevising,
 	}
+
+	for _, executionLabel := range executionLabels {
+		if w.hasLabel(issue, executionLabel) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // isInProgressPhase はIssueが進行中のフェーズにあるかチェックする
@@ -606,12 +625,6 @@ func (w *IssueWatcher) isInProgressPhase(issue github.Issue) bool {
 		}
 	}
 	return false
-}
-
-// isIssueCompleted はIssueが完了状態かチェックする
-func (w *IssueWatcher) isIssueCompleted(issue github.Issue) bool {
-	// soba:mergedまたはsoba:closedラベルがあれば完了
-	return w.hasLabel(issue, "soba:merged") || w.hasLabel(issue, "soba:closed") || issue.State == "closed"
 }
 
 // shouldAutoTransition は自動遷移が必要かチェックする

@@ -60,7 +60,7 @@ func TestQueueManager_EnqueueNextIssue(t *testing.T) {
 			issues: []github.Issue{
 				{
 					Number: 1,
-					Labels: []github.Label{{Name: "soba:merged"}},
+					Labels: []github.Label{{Name: "soba:done"}},
 				},
 			},
 			setupMock:     func(m *MockQueueGitHubClient) {},

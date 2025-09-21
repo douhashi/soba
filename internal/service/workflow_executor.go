@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
@@ -188,10 +189,10 @@ func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, p
 		return nil
 	}
 
-	// 最初のペインインデックスを取得
-	paneIndex, err := e.tmux.GetFirstPaneIndex(sessionName, windowName)
+	// 最後のペインインデックスを取得（新しく作成されたペイン）
+	paneIndex, err := e.tmux.GetLastPaneIndex(sessionName, windowName)
 	if err != nil {
-		e.logger.Error("Failed to get first pane index", "error", err, "session", sessionName, "window", windowName)
+		e.logger.Error("Failed to get last pane index", "error", err, "session", sessionName, "window", windowName)
 		return NewTmuxManagementError("get pane index", windowName, err.Error())
 	}
 
@@ -199,12 +200,27 @@ func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, p
 	if requiresWorktree(phase) {
 		worktreeDir := fmt.Sprintf("%s/issue-%d", cfg.Git.WorktreeBasePath, issueNumber)
 		cdCommand := fmt.Sprintf("cd %s && %s", worktreeDir, command)
+
+		// tmuxペインの準備完了を待つ（コマンド実行の直前）
+		if cfg.Workflow.TmuxCommandDelay > 0 {
+			delay := time.Duration(cfg.Workflow.TmuxCommandDelay) * time.Second
+			e.logger.Debug("Waiting for tmux pane to be ready before command execution", "delay", delay, "issue", issueNumber)
+			time.Sleep(delay)
+		}
+
 		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, cdCommand); err != nil {
 			e.logger.Error("Failed to send command", "error", err, "command", cdCommand, "pane", paneIndex)
 			return NewCommandExecutionError(cdCommand, string(phase), issueNumber, err.Error())
 		}
 		e.logger.Info("Command sent with worktree cd", "issue", issueNumber, "phase", phase, "worktree", worktreeDir, "command", command)
 	} else {
+		// tmuxペインの準備完了を待つ（コマンド実行の直前）
+		if cfg.Workflow.TmuxCommandDelay > 0 {
+			delay := time.Duration(cfg.Workflow.TmuxCommandDelay) * time.Second
+			e.logger.Debug("Waiting for tmux pane to be ready before command execution", "delay", delay, "issue", issueNumber)
+			time.Sleep(delay)
+		}
+
 		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, command); err != nil {
 			e.logger.Error("Failed to send command", "error", err, "command", command, "pane", paneIndex)
 			return NewCommandExecutionError(command, string(phase), issueNumber, err.Error())

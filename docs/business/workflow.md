@@ -58,14 +58,8 @@
 **アクション**:
 - マージ準備完了
 - 最終確認
-
-### 8. Merge (マージ)
-**ラベル遷移**: `soba:done` → `soba:merged`
-**アクション**:
-- Squash merge実行（PR`soba:lgtm`ラベル確認後）
-- Issue自動クローズ
-- worktree削除
-- tmuxセッションクリーンアップ
+- PRWatcherへの処理権限移譲
+- Issue処理の完了（手動でIssueクローズまたは将来のPRWatcher実装による自動マージ）
 
 ## ラベル状態遷移図
 
@@ -82,8 +76,7 @@ stateDiagram-v2
     soba_reviewing --> soba_requires_changes: 修正要求
     soba_requires_changes --> soba_revising: 修正開始
     soba_revising --> soba_review_requested: 修正完了
-    soba_done --> soba_merged: マージ実行
-    soba_merged --> [*]: 完了
+    soba_done --> [*]: 完了
 
     note right of soba_todo
         Issue: 新規作成の待機状態
@@ -105,8 +98,8 @@ stateDiagram-v2
     end note
 
     note right of soba_done
-        Issue: マージ待機
-        PRにlgtmラベル付き
+        Issue: 最終状態
+        PRWatcherに移譲、手動クローズ待ち
     end note
 
     note left of soba_requires_changes
@@ -143,15 +136,11 @@ flowchart TB
     RequiresChanges --> Revising[Issue: soba:revising<br/>Claude Code: 修正]
     Revising --> ReviewReq
 
-    Done --> CheckPR{PRのlgtm確認}
-    CheckPR -->|確認OK| Merged[Issue: soba:merged<br/>Squash Merge]
-    Merged --> Cleanup[クリーンアップ<br/>・Issue Close<br/>・Worktree削除<br/>・tmux終了]
-    Cleanup --> End([完了])
+    Done --> End([IssueWatcher完了<br/>PRWatcherまたは手動処理待ち])
 
     style Start fill:#e1f5fe
     style End fill:#c8e6c9
     style RequiresChanges fill:#ffccbc
-    style Merged fill:#a5d6a7
     style PRLabel fill:#fff3cd
 ```
 
@@ -172,8 +161,8 @@ flowchart TB
 
 ### 処理ルール
 1. Issue番号の小さい順に1つずつ処理
-2. 現在のIssueが`soba:merged`または`closed`になるまで待機
-3. 完了後に次のIssueへ移行
+2. 現在のIssueが`soba:done`に到達するか`closed`になるまで待機
+3. 完了後に次のIssueへ移行（PRWatcherまたは手動処理に移譲）
 
 ### スキップ条件
 - 依存Issueが未完了
@@ -193,10 +182,9 @@ sobaが自動的に管理するGitHubラベルの一覧です。これらのラ�
 | `soba:doing` | ![#1d76db](https://via.placeholder.com/15/1d76db/000000?text=+) `#1d76db` | Claude Codeによる実装作業中 | Implement |
 | `soba:review-requested` | ![#f9d71c](https://via.placeholder.com/15/f9d71c/000000?text=+) `#f9d71c` | PR作成済み・レビュー待機中 | Review |
 | `soba:reviewing` | ![#a2eeef](https://via.placeholder.com/15/a2eeef/000000?text=+) `#a2eeef` | Claude Codeによるレビュー中 | Review |
-| `soba:done` | ![#0e8a16](https://via.placeholder.com/15/0e8a16/000000?text=+) `#0e8a16` | レビュー承認済み・マージ準備完了 | Review |
+| `soba:done` | ![#0e8a16](https://via.placeholder.com/15/0e8a16/000000?text=+) `#0e8a16` | レビュー承認済み・IssueWatcher処理完了 | Done |
 | `soba:requires-changes` | ![#d93f0b](https://via.placeholder.com/15/d93f0b/000000?text=+) `#d93f0b` | レビューで修正要求・修正待機中 | Revise |
 | `soba:revising` | ![#ff6347](https://via.placeholder.com/15/ff6347/000000?text=+) `#ff6347` | Claude Codeによる修正作業中 | Revise |
-| `soba:merged` | ![#6f42c1](https://via.placeholder.com/15/6f42c1/000000?text=+) `#6f42c1` | PR マージ済み・Issue完了 | Merge |
 
 ### ラベル管理について
 

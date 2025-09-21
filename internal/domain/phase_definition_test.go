@@ -81,18 +81,6 @@ func TestPhaseDefinitions(t *testing.T) {
 				domain.LabelReviewRequested: true,
 			},
 		},
-		{
-			name:              "merge フェーズが正しく定義されている",
-			phaseName:         "merge",
-			expectedTrigger:   domain.LabelDone,
-			expectedExecution: domain.LabelMerged,
-			expectedType:      domain.ExecutionTypeLabelOnly,
-			expectedPane:      false,
-			expectedWorktree:  false,
-			expectedCompletions: map[string]bool{
-				domain.LabelMerged: true,
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -149,9 +137,9 @@ func TestGetPhaseByTrigger(t *testing.T) {
 			expectedPhase: "revise",
 		},
 		{
-			name:          "soba:doneでmergeフェーズを取得",
-			label:         domain.LabelDone,
-			expectedPhase: "merge",
+			name:      "soba:doneは最終フェーズなのでnilを返す",
+			label:     domain.LabelDone,
+			expectNil: true,
 		},
 		{
 			name:      "存在しないラベルではnilを返す",
@@ -212,11 +200,6 @@ func TestGetPhaseByExecutionLabel(t *testing.T) {
 			expectedPhase: "revise",
 		},
 		{
-			name:          "soba:mergedでmergeフェーズを取得",
-			label:         domain.LabelMerged,
-			expectedPhase: "merge",
-		},
-		{
 			name:      "存在しないラベルではnilを返す",
 			label:     "invalid-label",
 			expectNil: true,
@@ -266,11 +249,6 @@ func TestIsCompletionLabel(t *testing.T) {
 		{
 			name:     "soba:requires-changesは完了ラベル",
 			label:    domain.LabelRequiresChanges,
-			expected: true,
-		},
-		{
-			name:     "soba:mergedは完了ラベル",
-			label:    domain.LabelMerged,
 			expected: true,
 		},
 		{
@@ -419,11 +397,6 @@ func TestPhaseAutoTransition(t *testing.T) {
 		{
 			name:         "reviseフェーズは自動遷移しない",
 			phaseName:    "revise",
-			expectedAuto: false,
-		},
-		{
-			name:         "mergeフェーズは自動遷移しない",
-			phaseName:    "merge",
 			expectedAuto: false,
 		},
 	}

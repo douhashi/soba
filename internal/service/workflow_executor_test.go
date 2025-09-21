@@ -67,6 +67,11 @@ func (m *MockTmuxClient) GetFirstPaneIndex(sessionName, windowName string) (int,
 	return args.Int(0), args.Error(1)
 }
 
+func (m *MockTmuxClient) GetLastPaneIndex(sessionName, windowName string) (int, error) {
+	args := m.Called(sessionName, windowName)
+	return args.Int(0), args.Error(1)
+}
+
 func (m *MockTmuxClient) ResizePanes(sessionName, windowName string) error {
 	args := m.Called(sessionName, windowName)
 	return args.Error(0)

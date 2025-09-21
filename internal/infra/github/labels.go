@@ -200,10 +200,5 @@ func GetSobaLabels() []CreateLabelRequest {
 			Color:       "ff6347",
 			Description: "Claude applying requested changes",
 		},
-		{
-			Name:        "soba:merged",
-			Color:       "6f42c1",
-			Description: "PR merged and issue closed",
-		},
 	}
 }

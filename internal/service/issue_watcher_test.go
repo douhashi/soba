@@ -113,7 +113,7 @@ func removeDuplicates(slice []int) []int {
 }
 
 func TestIssueWatcher_ContinueAfterCompletion(t *testing.T) {
-	// soba:mergedまたはclosedになったら次のIssueを処理することを確認
+	// closedになったら次のIssueを処理することを確認
 	initialIssues := []github.Issue{
 		{
 			ID:     1,
@@ -136,15 +136,7 @@ func TestIssueWatcher_ContinueAfterCompletion(t *testing.T) {
 	}
 
 	completedIssues := []github.Issue{
-		{
-			ID:     1,
-			Number: 1,
-			Title:  "Test Issue 1",
-			State:  "open",
-			Labels: []github.Label{
-				{Name: "soba:merged"},
-			},
-		},
+		// Issue #1がclosedになったため、fetchFilteredIssuesで除外される
 		{
 			ID:     2,
 			Number: 2,

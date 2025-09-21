@@ -14,7 +14,6 @@ const (
 	PhaseImplement Phase = "implement"
 	PhaseReview    Phase = "review"
 	PhaseRevise    Phase = "revise"
-	PhaseMerge     Phase = "merge"
 )
 
 // PhaseExecutionType represents how a phase should be executed
@@ -39,7 +38,6 @@ const (
 	LabelDone            = "soba:done"
 	LabelRequiresChanges = "soba:requires-changes"
 	LabelRevising        = "soba:revising"
-	LabelMerged          = "soba:merged"
 	LabelLGTM            = "soba:lgtm"
 )
 
@@ -143,21 +141,6 @@ var PhaseDefinitions = map[string]*PhaseDefinition{
 			},
 		},
 	},
-	"merge": {
-		Name:             "merge",
-		TriggerLabel:     LabelDone,
-		ExecutionLabel:   LabelMerged,
-		ExecutionType:    ExecutionTypeLabelOnly,
-		RequiresPane:     false,
-		RequiresWorktree: false,
-		CompletionLabels: map[string]NextAction{
-			LabelMerged: {
-				RemoveLabel:    "",
-				AutoTransition: false,
-				NextPhase:      "",
-			},
-		},
-	},
 }
 
 // GetPhaseByTrigger はトリガーラベルから対応するフェーズ定義を取得
@@ -244,8 +227,6 @@ func GetCurrentPhaseFromLabels(labels []string) (Phase, error) {
 		return PhaseReview, nil // doneはreviewの完了後
 	case LabelRequiresChanges:
 		return PhaseRevise, nil // requires-changesはreviewの完了後
-	case LabelMerged:
-		return PhaseMerge, nil
 	}
 
 	return "", fmt.Errorf("unknown soba label: %s", sobaLabel)
