@@ -1,0 +1,99 @@
+[
+  {
+    "id": 1234567890,
+    "number": 42,
+    "title": "Feature: Add support for multiple configurations",
+    "body": "We need to support multiple configuration files to make the system more flexible.\n\n## Requirements\n- Load configs from multiple sources\n- Merge configurations with proper precedence\n- Validate merged configuration",
+    "state": "open",
+    "url": "https://api.github.com/repos/example/repo/issues/42",
+    "html_url": "https://github.com/example/repo/issues/42",
+    "labels": [
+      {
+        "id": 208045946,
+        "name": "enhancement",
+        "color": "a2eeef"
+      },
+      {
+        "id": 208045947,
+        "name": "priority:high",
+        "color": "d73a4a"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 583231,
+        "login": "octocat",
+        "html_url": "https://github.com/octocat"
+      }
+    ],
+    "user": {
+      "id": 1,
+      "login": "developer",
+      "html_url": "https://github.com/developer"
+    },
+    "created_at": "2024-01-15T10:30:00Z",
+    "updated_at": "2024-01-16T14:22:00Z",
+    "closed_at": null
+  },
+  {
+    "id": 1234567891,
+    "number": 43,
+    "title": "Bug: Application crashes on startup with empty config",
+    "body": "When the configuration file is empty, the application crashes with a nil pointer exception.\n\n## Steps to reproduce\n1. Create an empty config.json\n2. Start the application\n3. Observe crash\n\n## Expected behavior\nApplication should start with default values",
+    "state": "open",
+    "url": "https://api.github.com/repos/example/repo/issues/43",
+    "html_url": "https://github.com/example/repo/issues/43",
+    "labels": [
+      {
+        "id": 208045948,
+        "name": "bug",
+        "color": "d73a4a"
+      },
+      {
+        "id": 208045949,
+        "name": "good first issue",
+        "color": "7057ff"
+      }
+    ],
+    "assignees": [],
+    "user": {
+      "id": 2,
+      "login": "contributor",
+      "html_url": "https://github.com/contributor"
+    },
+    "created_at": "2024-01-17T08:15:00Z",
+    "updated_at": "2024-01-17T08:15:00Z",
+    "closed_at": null
+  },
+  {
+    "id": 1234567892,
+    "number": 44,
+    "title": "Documentation: Update README with new features",
+    "body": "The README needs to be updated to reflect the new features added in v2.0.0",
+    "state": "open",
+    "url": "https://api.github.com/repos/example/repo/issues/44",
+    "html_url": "https://github.com/example/repo/issues/44",
+    "labels": [
+      {
+        "id": 208045950,
+        "name": "documentation",
+        "color": "0075ca"
+      }
+    ],
+    "assignees": [
+      {
+        "id": 583232,
+        "login": "writer",
+        "html_url": "https://github.com/writer"
+      }
+    ],
+    "user": {
+      "id": 3,
+      "login": "maintainer",
+      "html_url": "https://github.com/maintainer"
+    },
+    "created_at": "2024-01-18T11:00:00Z",
+    "updated_at": "2024-01-19T09:30:00Z",
+    "closed_at": null
+  }
+]
