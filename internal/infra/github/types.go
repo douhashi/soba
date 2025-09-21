@@ -21,9 +21,10 @@ type Issue struct {
 
 // Label はGitHub Labelを表す
 type Label struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Color string `json:"color"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
 }
 
 // User はGitHub Userを表す
@@ -42,6 +43,13 @@ type ListIssuesOptions struct {
 	Since     *time.Time
 	Page      int
 	PerPage   int
+}
+
+// CreateLabelRequest はラベル作成時のリクエスト
+type CreateLabelRequest struct {
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description"`
 }
 
 // ErrorResponse はGitHub APIのエラーレスポンス
