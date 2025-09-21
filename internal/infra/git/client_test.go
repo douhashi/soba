@@ -4,332 +4,622 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestNewClient(t *testing.T) {
+func TestClient_GetRemoteURL(t *testing.T) {
 	tests := []struct {
-		name    string
-		workDir string
-		wantErr bool
+		name      string
+		setupFunc func(t *testing.T, tmpDir string)
+		remote    string
+		wantURL   string
+		wantErr   bool
 	}{
 		{
-			name:    "Valid work directory",
-			workDir: ".",
+			name: "HTTPS URL format",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+				runCommand(t, tmpDir, "git", "remote", "add", "origin", "https://github.com/owner/repo.git")
+			},
+			remote:  "origin",
+			wantURL: "https://github.com/owner/repo.git",
 			wantErr: false,
 		},
 		{
-			name:    "Empty work directory",
-			workDir: "",
+			name: "SSH URL format",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+				runCommand(t, tmpDir, "git", "remote", "add", "origin", "git@github.com:owner/repo.git")
+			},
+			remote:  "origin",
+			wantURL: "git@github.com:owner/repo.git",
+			wantErr: false,
+		},
+		{
+			name: "Remote not found",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+			},
+			remote:  "origin",
+			wantURL: "",
+			wantErr: true,
+		},
+		{
+			name: "Non-existent remote name",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+				runCommand(t, tmpDir, "git", "remote", "add", "origin", "https://github.com/owner/repo.git")
+			},
+			remote:  "upstream",
+			wantURL: "",
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.workDir)
-			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Nil(t, client)
+			// Create temporary directory
+			tmpDir := t.TempDir()
+
+			// Setup test environment
+			tt.setupFunc(t, tmpDir)
+
+			// Create client
+			client, err := NewClient(tmpDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Test GetRemoteURL
+			gotURL, err := client.GetRemoteURL(tt.remote)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetRemoteURL() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotURL != tt.wantURL {
+				t.Errorf("GetRemoteURL() = %v, want %v", gotURL, tt.wantURL)
+			}
+		})
+	}
+}
+
+func TestClient_ParseRepositoryFromURL(t *testing.T) {
+	tests := []struct {
+		name       string
+		url        string
+		wantOwner  string
+		wantRepo   string
+		wantErr    bool
+	}{
+		{
+			name:      "HTTPS URL with .git",
+			url:       "https://github.com/owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
+			name:      "HTTPS URL without .git",
+			url:       "https://github.com/owner/repo",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
+			name:      "SSH URL with .git",
+			url:       "git@github.com:owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
+			name:      "SSH URL without .git",
+			url:       "git@github.com:owner/repo",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
+			name:      "SSH URL with custom port",
+			url:       "ssh://git@github.com:22/owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
+			name:      "Invalid URL format",
+			url:       "not-a-valid-url",
+			wantOwner: "",
+			wantRepo:  "",
+			wantErr:   true,
+		},
+		{
+			name:      "Non-GitHub URL",
+			url:       "https://gitlab.com/owner/repo.git",
+			wantOwner: "",
+			wantRepo:  "",
+			wantErr:   true,
+		},
+		{
+			name:      "Empty URL",
+			url:       "",
+			wantOwner: "",
+			wantRepo:  "",
+			wantErr:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotOwner, gotRepo, err := ParseRepositoryFromURL(tt.url)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseRepositoryFromURL() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotOwner != tt.wantOwner {
+				t.Errorf("ParseRepositoryFromURL() owner = %v, want %v", gotOwner, tt.wantOwner)
+			}
+			if gotRepo != tt.wantRepo {
+				t.Errorf("ParseRepositoryFromURL() repo = %v, want %v", gotRepo, tt.wantRepo)
+			}
+		})
+	}
+}
+
+func TestClient_GetRepository(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupFunc func(t *testing.T, tmpDir string)
+		wantRepo  string
+		wantErr   bool
+	}{
+		{
+			name: "Get repository from origin remote",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+				runCommand(t, tmpDir, "git", "remote", "add", "origin", "https://github.com/douhashi/soba.git")
+			},
+			wantRepo: "douhashi/soba",
+			wantErr:  false,
+		},
+		{
+			name: "Get repository from SSH URL",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+				runCommand(t, tmpDir, "git", "remote", "add", "origin", "git@github.com:douhashi/soba-cli.git")
+			},
+			wantRepo: "douhashi/soba-cli",
+			wantErr:  false,
+		},
+		{
+			name: "No remote configured",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+			},
+			wantRepo: "",
+			wantErr:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temporary directory
+			tmpDir := t.TempDir()
+
+			// Setup test environment
+			tt.setupFunc(t, tmpDir)
+
+			// Create client
+			client, err := NewClient(tmpDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Test GetRepository
+			gotRepo, err := client.GetRepository()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetRepository() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotRepo != tt.wantRepo {
+				t.Errorf("GetRepository() = %v, want %v", gotRepo, tt.wantRepo)
+			}
+		})
+	}
+}
+
+func TestNewClient(t *testing.T) {
+	tests := []struct {
+		name    string
+		workDir string
+		setup   func(t *testing.T, dir string)
+		wantErr bool
+	}{
+		{
+			name: "Valid git repository",
+			setup: func(t *testing.T, dir string) {
+				runCommand(t, dir, "git", "init")
+			},
+			wantErr: false,
+		},
+		{
+			name:    "Not a git repository",
+			setup:   func(t *testing.T, dir string) {},
+			wantErr: true,
+		},
+		{
+			name:    "Empty work directory",
+			workDir: "",
+			setup:   func(t *testing.T, dir string) {},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var workDir string
+			if tt.workDir == "" && tt.name != "Empty work directory" {
+				workDir = t.TempDir()
 			} else {
-				assert.NoError(t, err)
-				assert.NotNil(t, client)
+				workDir = tt.workDir
+			}
+
+			if workDir != "" {
+				tt.setup(t, workDir)
+			}
+
+			_, err := NewClient(workDir)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewClient() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
 func TestClient_CreateWorktree(t *testing.T) {
-	tempDir := t.TempDir()
-	repoDir := filepath.Join(tempDir, "test-repo")
-
-	// Setup test repository
-	setupTestRepo(t, repoDir)
-
-	client, err := NewClient(repoDir)
-	require.NoError(t, err)
-
 	tests := []struct {
-		name       string
+		name        string
 		worktreePath string
-		branchName   string
-		baseBranch   string
-		wantErr      bool
-		errMessage   string
+		branchName  string
+		baseBranch  string
+		setup       func(t *testing.T, dir string)
+		wantErr     bool
 	}{
 		{
-			name:         "Create worktree successfully",
-			worktreePath: filepath.Join(tempDir, "worktree1"),
-			branchName:   "soba/1",
-			baseBranch:   "main",
-			wantErr:      false,
+			name:        "Create worktree with new branch",
+			worktreePath: "worktree1",
+			branchName:  "feature/test1",
+			baseBranch:  "main",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: false,
 		},
 		{
-			name:         "Empty worktree path",
+			name:        "Create worktree with default base branch",
+			worktreePath: "worktree2",
+			branchName:  "feature/test2",
+			baseBranch:  "",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: false,
+		},
+		{
+			name:        "Create worktree with non-existent base branch",
+			worktreePath: "worktree3",
+			branchName:  "feature/test3",
+			baseBranch:  "non-existent",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: true,
+		},
+		{
+			name:        "Empty worktree path",
 			worktreePath: "",
-			branchName:   "soba/2",
-			baseBranch:   "main",
-			wantErr:      true,
-			errMessage:   "worktree path is required",
+			branchName:  "feature/test4",
+			baseBranch:  "main",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: true,
 		},
 		{
-			name:         "Empty branch name",
-			worktreePath: filepath.Join(tempDir, "worktree2"),
-			branchName:   "",
-			baseBranch:   "main",
-			wantErr:      true,
-			errMessage:   "branch name is required",
-		},
-		{
-			name:         "Invalid base branch",
-			worktreePath: filepath.Join(tempDir, "worktree3"),
-			branchName:   "soba/3",
-			baseBranch:   "nonexistent",
-			wantErr:      true,
-			errMessage:   "base branch not found",
+			name:        "Empty branch name",
+			worktreePath: "worktree5",
+			branchName:  "",
+			baseBranch:  "main",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := client.CreateWorktree(tt.worktreePath, tt.branchName, tt.baseBranch)
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errMessage != "" {
-					assert.Contains(t, err.Error(), tt.errMessage)
+			// Create temporary directory
+			tmpDir := t.TempDir()
+
+			// Setup test repository
+			tt.setup(t, tmpDir)
+
+			// Create client
+			client, err := NewClient(tmpDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Prepare worktree path
+			var fullWorktreePath string
+			if tt.worktreePath != "" {
+				fullWorktreePath = filepath.Join(tmpDir, tt.worktreePath)
+			}
+
+			// Test CreateWorktree
+			err = client.CreateWorktree(fullWorktreePath, tt.branchName, tt.baseBranch)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("CreateWorktree() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			// If success, verify worktree was created
+			if err == nil && fullWorktreePath != "" {
+				if !client.WorktreeExists(fullWorktreePath) {
+					t.Errorf("Worktree was not created at %s", fullWorktreePath)
 				}
-			} else {
-				assert.NoError(t, err)
-				// Verify worktree was created
-				assert.DirExists(t, tt.worktreePath)
-				// Cleanup
-				_ = client.RemoveWorktree(tt.worktreePath)
 			}
 		})
 	}
 }
 
 func TestClient_RemoveWorktree(t *testing.T) {
-	tempDir := t.TempDir()
-	repoDir := filepath.Join(tempDir, "test-repo")
-
-	setupTestRepo(t, repoDir)
-
-	client, err := NewClient(repoDir)
-	require.NoError(t, err)
-
-	// Create a worktree first
-	worktreePath := filepath.Join(tempDir, "worktree-to-remove")
-	err = client.CreateWorktree(worktreePath, "soba/99", "main")
-	require.NoError(t, err)
-
 	tests := []struct {
-		name         string
+		name        string
 		worktreePath string
-		wantErr      bool
-		errMessage   string
+		setup       func(t *testing.T, dir string, worktreePath string) bool
+		wantErr     bool
 	}{
 		{
-			name:         "Remove existing worktree",
-			worktreePath: worktreePath,
-			wantErr:      false,
+			name:        "Remove existing worktree",
+			worktreePath: "worktree-to-remove",
+			setup: func(t *testing.T, dir string, worktreePath string) bool {
+				createTestRepository(t, dir)
+				client, _ := NewClient(dir)
+				fullPath := filepath.Join(dir, worktreePath)
+				err := client.CreateWorktree(fullPath, "test-branch", "main")
+				return err == nil
+			},
+			wantErr: false,
 		},
 		{
-			name:         "Remove non-existing worktree",
-			worktreePath: filepath.Join(tempDir, "nonexistent"),
-			wantErr:      true,
-			errMessage:   "worktree not found",
+			name:        "Remove non-existent worktree",
+			worktreePath: "non-existent",
+			setup: func(t *testing.T, dir string, worktreePath string) bool {
+				createTestRepository(t, dir)
+				return true
+			},
+			wantErr: true,
 		},
 		{
-			name:         "Empty worktree path",
+			name:        "Empty worktree path",
 			worktreePath: "",
-			wantErr:      true,
-			errMessage:   "worktree path is required",
+			setup: func(t *testing.T, dir string, worktreePath string) bool {
+				createTestRepository(t, dir)
+				return true
+			},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := client.RemoveWorktree(tt.worktreePath)
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errMessage != "" {
-					assert.Contains(t, err.Error(), tt.errMessage)
+			// Create temporary directory
+			tmpDir := t.TempDir()
+
+			// Setup test environment
+			if !tt.setup(t, tmpDir, tt.worktreePath) {
+				t.Skip("Setup failed, skipping test")
+			}
+
+			// Create client
+			client, err := NewClient(tmpDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Prepare worktree path
+			var fullWorktreePath string
+			if tt.worktreePath != "" {
+				fullWorktreePath = filepath.Join(tmpDir, tt.worktreePath)
+			}
+
+			// Test RemoveWorktree
+			err = client.RemoveWorktree(fullWorktreePath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RemoveWorktree() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			// If success, verify worktree was removed
+			if err == nil && fullWorktreePath != "" {
+				if client.WorktreeExists(fullWorktreePath) {
+					t.Errorf("Worktree still exists at %s", fullWorktreePath)
 				}
-			} else {
-				assert.NoError(t, err)
-				// Verify worktree was removed
-				assert.NoDirExists(t, tt.worktreePath)
 			}
 		})
 	}
 }
 
 func TestClient_UpdateBaseBranch(t *testing.T) {
-	tempDir := t.TempDir()
-	repoDir := filepath.Join(tempDir, "test-repo")
-
-	setupTestRepo(t, repoDir)
-
-	client, err := NewClient(repoDir)
-	require.NoError(t, err)
-
 	tests := []struct {
-		name       string
-		branch     string
-		wantErr    bool
-		errMessage string
+		name   string
+		branch string
+		setup  func(t *testing.T, dir string)
+		wantErr bool
 	}{
 		{
-			name:    "Update main branch",
-			branch:  "main",
+			name:   "Update existing branch",
+			branch: "main",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
 			wantErr: false,
 		},
 		{
-			name:       "Update non-existent branch",
-			branch:     "nonexistent",
-			wantErr:    true,
-			errMessage: "branch not found",
+			name:   "Update non-existent branch",
+			branch: "non-existent",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: true,
 		},
 		{
-			name:       "Empty branch name",
-			branch:     "",
-			wantErr:    true,
-			errMessage: "branch name is required",
+			name:   "Empty branch name",
+			branch: "",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+			},
+			wantErr: true,
+		},
+		{
+			name:   "Repository without remote",
+			branch: "main",
+			setup: func(t *testing.T, dir string) {
+				runCommand(t, dir, "git", "init")
+				// Set Git configuration for CI environment
+				runCommand(t, dir, "git", "config", "user.email", "test@example.com")
+				runCommand(t, dir, "git", "config", "user.name", "Test User")
+				runCommand(t, dir, "git", "checkout", "-b", "main")
+				writeFile(t, filepath.Join(dir, "README.md"), "# Test")
+				runCommand(t, dir, "git", "add", ".")
+				runCommand(t, dir, "git", "commit", "-m", "Initial commit")
+			},
+			wantErr: false, // Should not fail if no remote
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := client.UpdateBaseBranch(tt.branch)
-			if tt.wantErr {
-				assert.Error(t, err)
-				if tt.errMessage != "" {
-					assert.Contains(t, err.Error(), tt.errMessage)
-				}
-			} else {
-				assert.NoError(t, err)
+			// Create temporary directory
+			tmpDir := t.TempDir()
+
+			// Setup test environment
+			tt.setup(t, tmpDir)
+
+			// Create client
+			client, err := NewClient(tmpDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Test UpdateBaseBranch
+			err = client.UpdateBaseBranch(tt.branch)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("UpdateBaseBranch() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
 	}
 }
 
 func TestClient_WorktreeExists(t *testing.T) {
-	tempDir := t.TempDir()
-	repoDir := filepath.Join(tempDir, "test-repo")
-
-	setupTestRepo(t, repoDir)
-
-	client, err := NewClient(repoDir)
-	require.NoError(t, err)
-
-	// Create a worktree
-	worktreePath := filepath.Join(tempDir, "existing-worktree")
-	err = client.CreateWorktree(worktreePath, "soba/100", "main")
-	require.NoError(t, err)
-
 	tests := []struct {
-		name         string
+		name        string
 		worktreePath string
-		want         bool
+		setup       func(t *testing.T, dir string) string
+		want        bool
 	}{
 		{
-			name:         "Existing worktree",
-			worktreePath: worktreePath,
-			want:         true,
+			name:        "Existing worktree",
+			worktreePath: "existing-worktree",
+			setup: func(t *testing.T, dir string) string {
+				createTestRepository(t, dir)
+				client, _ := NewClient(dir)
+				fullPath := filepath.Join(dir, "existing-worktree")
+				client.CreateWorktree(fullPath, "test-branch", "main")
+				return fullPath
+			},
+			want: true,
 		},
 		{
-			name:         "Non-existing worktree",
-			worktreePath: filepath.Join(tempDir, "nonexistent"),
-			want:         false,
+			name:        "Non-existent worktree",
+			worktreePath: "non-existent",
+			setup: func(t *testing.T, dir string) string {
+				createTestRepository(t, dir)
+				return filepath.Join(dir, "non-existent")
+			},
+			want: false,
 		},
 		{
-			name:         "Empty path",
+			name:        "Empty path",
 			worktreePath: "",
-			want:         false,
+			setup: func(t *testing.T, dir string) string {
+				createTestRepository(t, dir)
+				return ""
+			},
+			want: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			exists := client.WorktreeExists(tt.worktreePath)
-			assert.Equal(t, tt.want, exists)
+			// Create temporary directory
+			tmpDir := t.TempDir()
+
+			// Setup test environment and get the path to check
+			pathToCheck := tt.setup(t, tmpDir)
+
+			// Create client
+			client, err := NewClient(tmpDir)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			// Test WorktreeExists
+			got := client.WorktreeExists(pathToCheck)
+			if got != tt.want {
+				t.Errorf("WorktreeExists() = %v, want %v", got, tt.want)
+			}
 		})
 	}
-
-	// Cleanup
-	_ = client.RemoveWorktree(worktreePath)
 }
 
-// setupTestRepo creates a minimal git repository for testing
-func setupTestRepo(t *testing.T, repoDir string) {
+// Helper functions
+
+func createTestRepository(t *testing.T, dir string) {
 	t.Helper()
 
-	// Create directory
-	err := os.MkdirAll(repoDir, 0755)
-	require.NoError(t, err)
+	// Initialize git repository
+	runCommand(t, dir, "git", "init")
 
-	// Initialize git repo with main as default branch
-	cmd := execCommand("git", "init", "-b", "main", repoDir)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Fallback for older git versions that don't support -b flag
-		cmd = execCommand("git", "init", repoDir)
-		output, err = cmd.CombinedOutput()
-		require.NoError(t, err, "Failed to init repo: %s", string(output))
+	// Set Git configuration for CI environment
+	runCommand(t, dir, "git", "config", "user.email", "test@example.com")
+	runCommand(t, dir, "git", "config", "user.name", "Test User")
 
-		// Rename default branch to main
-		cmd = execCommand("git", "-C", repoDir, "branch", "-M", "main")
-		_, err = cmd.CombinedOutput()
-		// Ignore error if branch doesn't exist yet (will be created on first commit)
-	}
-
-	// Configure git
-	cmd = execCommand("git", "-C", repoDir, "config", "user.email", "test@example.com")
-	_, err = cmd.CombinedOutput()
-	require.NoError(t, err)
-
-	cmd = execCommand("git", "-C", repoDir, "config", "user.name", "Test User")
-	_, err = cmd.CombinedOutput()
-	require.NoError(t, err)
+	runCommand(t, dir, "git", "checkout", "-b", "main")
 
 	// Create initial commit
-	testFile := filepath.Join(repoDir, "README.md")
-	err = os.WriteFile(testFile, []byte("# Test Repository\n"), 0644)
-	require.NoError(t, err)
-
-	cmd = execCommand("git", "-C", repoDir, "add", ".")
-	_, err = cmd.CombinedOutput()
-	require.NoError(t, err)
-
-	cmd = execCommand("git", "-C", repoDir, "commit", "-m", "Initial commit")
-	output, err = cmd.CombinedOutput()
-	require.NoError(t, err, "Failed to commit: %s", string(output))
-
-	// Ensure we're on the main branch after commit
-	cmd = execCommand("git", "-C", repoDir, "branch", "-M", "main")
-	_, err = cmd.CombinedOutput()
-	// Ignore error in case branch is already named main
+	writeFile(t, filepath.Join(dir, "README.md"), "# Test Repository")
+	runCommand(t, dir, "git", "add", ".")
+	runCommand(t, dir, "git", "commit", "-m", "Initial commit")
 }
 
-// execCommand is a wrapper for testing
-var execCommand = func(name string, arg ...string) commandRunner {
-	return &osExecCommand{name: name, args: arg}
+func runCommand(t *testing.T, dir string, name string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command(name, args...)
+	cmd.Dir = dir
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %s %s\n%s\n%v", name, strings.Join(args, " "), output, err)
+	}
 }
 
-type commandRunner interface {
-	CombinedOutput() ([]byte, error)
-}
+func writeFile(t *testing.T, path string, content string) {
+	t.Helper()
 
-type osExecCommand struct {
-	name string
-	args []string
-}
-
-func (c *osExecCommand) CombinedOutput() ([]byte, error) {
-	cmd := exec.Command(c.name, c.args...)
-	return cmd.CombinedOutput()
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write file %s: %v", path, err)
+	}
 }

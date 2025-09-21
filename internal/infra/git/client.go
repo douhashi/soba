@@ -166,3 +166,89 @@ func (c *Client) WorktreeExists(worktreePath string) bool {
 
 	return false
 }
+
+// GetRemoteURL gets the URL of a remote repository
+func (c *Client) GetRemoteURL(remote string) (string, error) {
+	if remote == "" {
+		return "", NewGitError("remote", "", "remote name is required", nil)
+	}
+
+	cmd := exec.Command("git", "-C", c.workDir, "remote", "get-url", remote)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", NewGitError("remote get-url", remote, "failed to get remote URL", err)
+	}
+
+	url := strings.TrimSpace(string(output))
+	if url == "" {
+		return "", NewGitError("remote get-url", remote, "empty remote URL", nil)
+	}
+
+	return url, nil
+}
+
+// ParseRepositoryFromURL parses owner/repo from a Git URL
+func ParseRepositoryFromURL(url string) (owner, repo string, err error) {
+	if url == "" {
+		return "", "", errors.New("empty URL")
+	}
+
+	// Remove trailing .git if present
+	url = strings.TrimSuffix(url, ".git")
+
+	// Handle SSH format: git@github.com:owner/repo
+	if strings.HasPrefix(url, "git@github.com:") {
+		parts := strings.Split(strings.TrimPrefix(url, "git@github.com:"), "/")
+		if len(parts) == 2 {
+			return parts[0], parts[1], nil
+		}
+		return "", "", errors.New("invalid SSH URL format")
+	}
+
+	// Handle SSH URL with protocol: ssh://git@github.com:22/owner/repo
+	if strings.HasPrefix(url, "ssh://git@github.com") {
+		// Find the path after github.com
+		idx := strings.Index(url, "github.com")
+		if idx >= 0 {
+			remaining := url[idx+len("github.com"):]
+			// Remove port if present
+			if strings.HasPrefix(remaining, ":") {
+				parts := strings.Split(remaining, "/")
+				if len(parts) >= 3 {
+					// Format: :22/owner/repo
+					return parts[1], parts[2], nil
+				}
+			}
+		}
+		return "", "", errors.New("invalid SSH URL format")
+	}
+
+	// Handle HTTPS format: https://github.com/owner/repo
+	if strings.HasPrefix(url, "https://github.com/") {
+		parts := strings.Split(strings.TrimPrefix(url, "https://github.com/"), "/")
+		if len(parts) == 2 {
+			return parts[0], parts[1], nil
+		}
+		return "", "", errors.New("invalid HTTPS URL format")
+	}
+
+	// Not a GitHub URL
+	return "", "", errors.New("not a GitHub URL")
+}
+
+// GetRepository gets the repository in owner/repo format from origin remote
+func (c *Client) GetRepository() (string, error) {
+	// Get origin remote URL
+	url, err := c.GetRemoteURL("origin")
+	if err != nil {
+		return "", err
+	}
+
+	// Parse owner/repo from URL
+	owner, repo, err := ParseRepositoryFromURL(url)
+	if err != nil {
+		return "", NewGitError("parse repository", url, "failed to parse repository from URL", err)
+	}
+
+	return fmt.Sprintf("%s/%s", owner, repo), nil
+}

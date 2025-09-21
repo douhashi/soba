@@ -10,6 +10,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra"
+	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/pkg/errors"
 	"github.com/douhashi/soba/pkg/logger"
@@ -45,6 +46,23 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 		return errors.WrapInternal(err, "failed to get current directory")
 	}
 
+	// Check if current directory is a git repository
+	gitClient, err := git.NewClient(currentDir)
+	if err != nil {
+		log.Error("Current directory is not a git repository", "error", err)
+		return errors.NewValidationError("current directory is not a git repository")
+	}
+
+	// Try to get repository information
+	repository, err := gitClient.GetRepository()
+	if err != nil {
+		// Log warning but continue with default
+		log.Warn("Failed to detect repository from git remote", "error", err)
+		repository = ""
+	} else {
+		log.Info("Detected repository from git remote", "repository", repository)
+	}
+
 	// Define paths
 	sobaDir := filepath.Join(currentDir, ".soba")
 	configPath := filepath.Join(sobaDir, "config.yml")
@@ -72,7 +90,15 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	log.Debug("Created directory", "path", sobaDir)
 
 	// Generate config template
-	configContent := config.GenerateTemplate()
+	var configContent string
+	if repository != "" {
+		opts := &config.TemplateOptions{
+			Repository: repository,
+		}
+		configContent = config.GenerateTemplateWithOptions(opts)
+	} else {
+		configContent = config.GenerateTemplate()
+	}
 
 	// Write config file
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {

@@ -131,3 +131,48 @@ func TestGenerateTemplate(t *testing.T) {
 		assert.GreaterOrEqual(t, topLevelKeys, 5, "Should have at least 5 top-level keys (github, workflow, slack, git, phase)")
 	})
 }
+
+func TestGenerateTemplateWithOptions(t *testing.T) {
+	t.Run("should use custom repository", func(t *testing.T) {
+		opts := &TemplateOptions{
+			Repository: "myorg/myrepo",
+		}
+		template := GenerateTemplateWithOptions(opts)
+
+		// Assert custom repository is used
+		assert.Contains(t, template, "repository: myorg/myrepo")
+		assert.NotContains(t, template, "repository: douhashi/soba-cli")
+	})
+
+	t.Run("should use default values when opts is nil", func(t *testing.T) {
+		template := GenerateTemplateWithOptions(nil)
+
+		// Assert default repository is used
+		assert.Contains(t, template, "repository: douhashi/soba-cli")
+	})
+
+	t.Run("should use default values when repository is empty", func(t *testing.T) {
+		opts := &TemplateOptions{
+			Repository: "",
+		}
+		template := GenerateTemplateWithOptions(opts)
+
+		// Assert default repository is used
+		assert.Contains(t, template, "repository: douhashi/soba-cli")
+	})
+
+	t.Run("generated template with custom options should be valid YAML", func(t *testing.T) {
+		opts := &TemplateOptions{
+			Repository: "test/repo",
+		}
+		template := GenerateTemplateWithOptions(opts)
+
+		// Parse the YAML
+		var config Config
+		err := yaml.Unmarshal([]byte(template), &config)
+		assert.NoError(t, err)
+
+		// Verify custom repository is set
+		assert.Equal(t, "test/repo", config.GitHub.Repository)
+	})
+}
