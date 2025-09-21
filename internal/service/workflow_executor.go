@@ -81,29 +81,24 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 		return err
 	}
 
-	// Planフェーズ開始時にworktreeを準備
-	if err := e.prepareWorkspaceIfNeeded(phase, issueNumber); err != nil {
-		return err
+	// フェーズの実行情報を取得
+	executionInfo := domain.GetPhaseExecutionInfo(phase)
+	if executionInfo == nil {
+		return NewWorkflowExecutionError("soba", string(phase), "no execution info defined")
 	}
 
-	// tmuxセッション管理
-	sessionName := DefaultSessionName
-	windowName := fmt.Sprintf("issue-%d", issueNumber)
-
-	// tmuxセッションとウィンドウのセットアップ
-	if err := e.setupTmuxSession(sessionName, windowName); err != nil {
-		return err
-	}
-
-	// ペイン管理
-	if err := e.managePane(sessionName, windowName); err != nil {
-		e.logger.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
-		return err
-	}
-
-	// コマンド実行
-	if err := e.executeCommand(cfg, issueNumber, phase, sessionName, windowName); err != nil {
-		return err
+	// 実行タイプに応じた処理
+	switch executionInfo.Type {
+	case domain.ExecutionTypeLabelOnly:
+		// ラベル更新のみの場合は、ここで完了
+		e.logger.Debug("Label-only phase completed", "issue", issueNumber, "phase", phase)
+	case domain.ExecutionTypeCommand:
+		// コマンド実行が必要な場合
+		if err := e.executeCommandPhase(cfg, issueNumber, phase, executionInfo); err != nil {
+			return err
+		}
+	default:
+		return NewWorkflowExecutionError("soba", string(phase), fmt.Sprintf("unknown execution type: %s", executionInfo.Type))
 	}
 
 	e.logger.Info("Phase execution completed", "issue", issueNumber, "phase", phase)
@@ -120,9 +115,41 @@ func (e *workflowExecutor) updateLabels(ctx context.Context, issueNumber int, tr
 	return nil
 }
 
-// prepareWorkspaceIfNeeded はPlanフェーズ開始時にworktreeを準備する
-func (e *workflowExecutor) prepareWorkspaceIfNeeded(phase domain.Phase, issueNumber int) error {
-	if phase != domain.PhasePlan || e.workspace == nil {
+// executeCommandPhase executes a command-based phase
+func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber int, phase domain.Phase, executionInfo *domain.PhaseExecutionInfo) error {
+	// Worktreeを準備（必要な場合）
+	if err := e.prepareWorkspaceIfNeeded(issueNumber, executionInfo); err != nil {
+		return err
+	}
+
+	// tmuxセッション管理
+	sessionName := DefaultSessionName
+	windowName := fmt.Sprintf("issue-%d", issueNumber)
+
+	// tmuxセッションとウィンドウのセットアップ
+	if err := e.setupTmuxSession(sessionName, windowName); err != nil {
+		return err
+	}
+
+	// ペイン管理（必要な場合）
+	if executionInfo.RequiresPane {
+		if err := e.managePane(sessionName, windowName); err != nil {
+			e.logger.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
+			return err
+		}
+	}
+
+	// コマンド実行
+	if err := e.executeCommand(cfg, issueNumber, phase, sessionName, windowName); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// prepareWorkspaceIfNeeded はworktreeを準備する（必要な場合）
+func (e *workflowExecutor) prepareWorkspaceIfNeeded(issueNumber int, executionInfo *domain.PhaseExecutionInfo) error {
+	if !executionInfo.RequiresWorktree || e.workspace == nil {
 		return nil
 	}
 

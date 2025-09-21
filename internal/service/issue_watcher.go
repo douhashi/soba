@@ -576,16 +576,27 @@ func (w *IssueWatcher) isIssueCompleted(issue github.Issue) bool {
 
 // shouldAutoTransition は自動遷移が必要かチェックする
 func (w *IssueWatcher) shouldAutoTransition(issue github.Issue) bool {
-	// 以下のラベルは自動遷移が必要：
-	// - soba:planning -> コマンド完了後にsoba:readyへ
-	// - soba:doing -> コマンド完了後にsoba:review-requestedへ
-	// - soba:revising -> コマンド完了後にsoba:review-requestedへ
+	// 現在のフェーズを取得
+	labelNames := make([]string, 0, len(issue.Labels))
+	for _, label := range issue.Labels {
+		labelNames = append(labelNames, label.Name)
+	}
 
-	// これらのフェーズは、WorkflowExecutorが実際にコマンドを実行しているので、
-	// コマンド完了検知はWorkflowExecutor側で行う必要がある
-	// IssueWatcher側では検知しない
+	currentPhase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	if err != nil {
+		w.logger.Debug("Could not determine current phase for auto-transition", "labels", labelNames, "error", err)
+		return false
+	}
 
-	return false
+	// フェーズの実行情報を取得
+	executionInfo := domain.GetPhaseExecutionInfo(currentPhase)
+	if executionInfo == nil {
+		w.logger.Debug("No execution info found for phase", "phase", currentPhase)
+		return false
+	}
+
+	// AutoTransitionがtrueの場合のみ自動遷移
+	return executionInfo.AutoTransition
 }
 
 // analyzeAndLogPhaseTransition はフェーズ遷移を分析してログ出力する

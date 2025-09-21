@@ -17,6 +17,64 @@ const (
 	PhaseMerge     Phase = "merge"
 )
 
+// PhaseExecutionType represents how a phase should be executed
+type PhaseExecutionType string
+
+const (
+	// ExecutionTypeLabelOnly only updates labels and transitions immediately
+	ExecutionTypeLabelOnly PhaseExecutionType = "label_only"
+	// ExecutionTypeCommand updates labels and executes commands
+	ExecutionTypeCommand PhaseExecutionType = "command"
+)
+
+// PhaseExecutionInfo contains execution characteristics for each phase
+type PhaseExecutionInfo struct {
+	Type             PhaseExecutionType
+	RequiresPane     bool
+	RequiresWorktree bool
+	AutoTransition   bool
+}
+
+// phaseExecutionInfo defines execution characteristics for each phase
+var phaseExecutionInfo = map[Phase]PhaseExecutionInfo{
+	PhaseQueue: {
+		Type:             ExecutionTypeLabelOnly,
+		RequiresPane:     false,
+		RequiresWorktree: false,
+		AutoTransition:   true,
+	},
+	PhasePlan: {
+		Type:             ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: true,
+		AutoTransition:   false,
+	},
+	PhaseImplement: {
+		Type:             ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: true,
+		AutoTransition:   false,
+	},
+	PhaseReview: {
+		Type:             ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: false,
+		AutoTransition:   false,
+	},
+	PhaseRevise: {
+		Type:             ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: true,
+		AutoTransition:   false,
+	},
+	PhaseMerge: {
+		Type:             ExecutionTypeLabelOnly,
+		RequiresPane:     false,
+		RequiresWorktree: false,
+		AutoTransition:   false,
+	},
+}
+
 // Label constants for soba workflow
 const (
 	LabelTodo            = "soba:todo"
@@ -73,6 +131,14 @@ var transitions = map[Phase]PhaseTransition{
 func GetTransition(phase Phase) *PhaseTransition {
 	if transition, ok := transitions[phase]; ok {
 		return &transition
+	}
+	return nil
+}
+
+// GetPhaseExecutionInfo returns the execution info for the given phase
+func GetPhaseExecutionInfo(phase Phase) *PhaseExecutionInfo {
+	if info, ok := phaseExecutionInfo[phase]; ok {
+		return &info
 	}
 	return nil
 }

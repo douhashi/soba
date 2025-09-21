@@ -125,14 +125,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
 				processor.On("Configure", mock.Anything).Return(nil)
 				processor.On("UpdateLabels", mock.Anything, 123, domain.LabelTodo, domain.LabelQueued).Return(nil)
-				tmux.On("SessionExists", "soba").Return(false)
-				tmux.On("CreateSession", "soba").Return(nil)
-				tmux.On("WindowExists", "soba", "issue-123").Return(false, nil)
-				tmux.On("CreateWindow", "soba", "issue-123").Return(nil)
-				tmux.On("GetPaneCount", "soba", "issue-123").Return(0, nil)
-				tmux.On("CreatePane", "soba", "issue-123").Return(nil)
-				tmux.On("ResizePanes", "soba", "issue-123").Return(nil)
-				// Queueフェーズはコマンドなしなので、GetFirstPaneIndexとSendCommandは呼ばれない
+				// Queueフェーズは ExecutionTypeLabelOnly なので、tmux操作は行われない
 			},
 			wantErr: false,
 		},
@@ -166,6 +159,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
 				processor.On("Configure", mock.Anything).Return(nil)
 				processor.On("UpdateLabels", mock.Anything, 789, domain.LabelReady, domain.LabelReviewRequested).Return(nil)
+				workspace.On("PrepareWorkspace", 789).Return(nil) // Implementフェーズでworktree準備
 				tmux.On("SessionExists", "soba").Return(true)
 				tmux.On("WindowExists", "soba", "issue-789").Return(true, nil)
 				tmux.On("GetPaneCount", "soba", "issue-789").Return(3, nil)               // Max panes reached
@@ -194,12 +188,13 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 		{
 			name:         "Error when creating tmux session",
 			issueNumber:  111,
-			phase:        domain.PhaseQueue,
-			currentLabel: domain.LabelTodo,
-			nextLabel:    domain.LabelQueued,
+			phase:        domain.PhasePlan,
+			currentLabel: domain.LabelQueued,
+			nextLabel:    domain.LabelReady,
 			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
 				processor.On("Configure", mock.Anything).Return(nil)
-				processor.On("UpdateLabels", mock.Anything, 111, domain.LabelTodo, domain.LabelQueued).Return(nil)
+				processor.On("UpdateLabels", mock.Anything, 111, domain.LabelQueued, domain.LabelReady).Return(nil)
+				workspace.On("PrepareWorkspace", 111).Return(nil) // Planフェーズでworktree準備
 				tmux.On("SessionExists", "soba").Return(false)
 				tmux.On("CreateSession", "soba").Return(errors.New("tmux error"))
 			},

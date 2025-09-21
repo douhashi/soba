@@ -403,3 +403,135 @@ func TestPhaseStrategy_ValidateTransition(t *testing.T) {
 		})
 	}
 }
+
+func TestGetPhaseExecutionInfo(t *testing.T) {
+	tests := []struct {
+		name         string
+		phase        domain.Phase
+		expectedType domain.PhaseExecutionType
+		expectedPane bool
+		expectedTree bool
+		expectedAuto bool
+		expectNil    bool
+	}{
+		{
+			name:         "PhaseQueue - ラベル更新のみで自動遷移",
+			phase:        domain.PhaseQueue,
+			expectedType: domain.ExecutionTypeLabelOnly,
+			expectedPane: false,
+			expectedTree: false,
+			expectedAuto: true,
+			expectNil:    false,
+		},
+		{
+			name:         "PhasePlan - コマンド実行でペイン・ワークツリー必要",
+			phase:        domain.PhasePlan,
+			expectedType: domain.ExecutionTypeCommand,
+			expectedPane: true,
+			expectedTree: true,
+			expectedAuto: false,
+			expectNil:    false,
+		},
+		{
+			name:         "PhaseImplement - コマンド実行でペイン・ワークツリー必要",
+			phase:        domain.PhaseImplement,
+			expectedType: domain.ExecutionTypeCommand,
+			expectedPane: true,
+			expectedTree: true,
+			expectedAuto: false,
+			expectNil:    false,
+		},
+		{
+			name:         "PhaseReview - コマンド実行でペインのみ必要",
+			phase:        domain.PhaseReview,
+			expectedType: domain.ExecutionTypeCommand,
+			expectedPane: true,
+			expectedTree: false,
+			expectedAuto: false,
+			expectNil:    false,
+		},
+		{
+			name:         "PhaseRevise - コマンド実行でペイン・ワークツリー必要",
+			phase:        domain.PhaseRevise,
+			expectedType: domain.ExecutionTypeCommand,
+			expectedPane: true,
+			expectedTree: true,
+			expectedAuto: false,
+			expectNil:    false,
+		},
+		{
+			name:         "PhaseMerge - ラベル更新のみで自動遷移なし",
+			phase:        domain.PhaseMerge,
+			expectedType: domain.ExecutionTypeLabelOnly,
+			expectedPane: false,
+			expectedTree: false,
+			expectedAuto: false,
+			expectNil:    false,
+		},
+		{
+			name:      "存在しないフェーズ",
+			phase:     domain.Phase("invalid"),
+			expectNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := domain.GetPhaseExecutionInfo(tt.phase)
+
+			if tt.expectNil {
+				if info != nil {
+					t.Errorf("expected nil but got %+v", info)
+				}
+				return
+			}
+
+			if info == nil {
+				t.Fatal("expected execution info but got nil")
+			}
+
+			if info.Type != tt.expectedType {
+				t.Errorf("expected Type %s, got %s", tt.expectedType, info.Type)
+			}
+
+			if info.RequiresPane != tt.expectedPane {
+				t.Errorf("expected RequiresPane %t, got %t", tt.expectedPane, info.RequiresPane)
+			}
+
+			if info.RequiresWorktree != tt.expectedTree {
+				t.Errorf("expected RequiresWorktree %t, got %t", tt.expectedTree, info.RequiresWorktree)
+			}
+
+			if info.AutoTransition != tt.expectedAuto {
+				t.Errorf("expected AutoTransition %t, got %t", tt.expectedAuto, info.AutoTransition)
+			}
+		})
+	}
+}
+
+func TestPhaseExecutionTypeConstants(t *testing.T) {
+	tests := []struct {
+		name     string
+		constant domain.PhaseExecutionType
+		expected string
+	}{
+		{
+			name:     "ExecutionTypeLabelOnly定数が正しい値を持つ",
+			constant: domain.ExecutionTypeLabelOnly,
+			expected: "label_only",
+		},
+		{
+			name:     "ExecutionTypeCommand定数が正しい値を持つ",
+			constant: domain.ExecutionTypeCommand,
+			expected: "command",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if string(tt.constant) != tt.expected {
+				t.Errorf("expected %s, got %s", tt.expected, string(tt.constant))
+			}
+		})
+	}
+}
