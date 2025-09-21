@@ -109,7 +109,7 @@ func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber i
 	}
 
 	// tmuxセッション管理
-	sessionName := DefaultSessionName
+	sessionName := e.generateSessionName(cfg.GitHub.Repository)
 	windowName := fmt.Sprintf("issue-%d", issueNumber)
 
 	// tmuxセッションとウィンドウのセットアップ
@@ -305,6 +305,25 @@ func (e *workflowExecutor) buildCommand(phaseCommand config.PhaseCommand, issueN
 	}
 
 	return strings.Join(parts, " ")
+}
+
+// generateSessionName はリポジトリ情報からセッション名を生成する
+func (e *workflowExecutor) generateSessionName(repository string) string {
+	if repository == "" {
+		return DefaultSessionName
+	}
+
+	// スラッシュで分割して所有者とリポジトリ名を結合
+	parts := strings.Split(repository, "/")
+	if len(parts) < 2 {
+		// 不正な形式の場合はデフォルトに戻る
+		return DefaultSessionName
+	}
+
+	// "soba-{owner}-{repo}"形式で生成
+	// 複数のスラッシュがある場合も全て結合
+	sessionName := "soba-" + strings.Join(parts, "-")
+	return sessionName
 }
 
 // getPhaseCommand は設定からフェーズ用のコマンドを取得する
