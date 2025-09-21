@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/douhashi/soba/internal/config"
-	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
@@ -65,22 +64,18 @@ func NewDaemonService() DaemonService {
 	}
 	workspace := NewGitWorkspaceManager(defaultCfg, gitClient)
 
-	// 最初にStrategyを作成
-	strategy := domain.NewDefaultPhaseStrategy()
-
 	// GitHubクライアント付きでProcessorを初期化
-	processor := NewIssueProcessor(githubClient, nil, strategy)
+	processor := NewIssueProcessor(githubClient, nil)
 
 	// ProcessorをExecutorに渡す
 	executor := NewWorkflowExecutor(tmuxClient, workspace, processor)
 
 	// ProcessorにExecutorを設定（循環依存を解決）
-	processorWithDeps := NewIssueProcessor(githubClient, executor, strategy)
+	processorWithDeps := NewIssueProcessor(githubClient, executor)
 
 	// IssueWatcherを初期化
 	// 注: configは後でStartForeground/StartDaemonで設定される
 	watcher := NewIssueWatcher(githubClient, &config.Config{})
-	watcher.SetPhaseStrategy(strategy)
 	watcher.SetProcessor(processorWithDeps)
 
 	return &daemonService{

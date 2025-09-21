@@ -20,7 +20,7 @@ const (
 // WorkflowExecutor はワークフロー実行のインターフェース
 type WorkflowExecutor interface {
 	// ExecutePhase は指定されたフェーズを実行する
-	ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase, strategy domain.PhaseStrategy) error
+	ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error
 }
 
 // workflowExecutor はWorkflowExecutorの実装
@@ -61,7 +61,7 @@ func NewWorkflowExecutorWithLogger(tmuxClient tmux.TmuxClient, workspace GitWork
 }
 
 // ExecutePhase は指定されたフェーズを実行する
-func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase, strategy domain.PhaseStrategy) error {
+func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error {
 	e.logger.Info("Executing phase", "issue", issueNumber, "phase", phase)
 
 	// IssueProcessorに設定を適用
@@ -70,55 +70,40 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 		return WrapServiceError(err, "failed to configure issue processor")
 	}
 
-	// フェーズ遷移情報を取得
-	transition := domain.GetTransition(phase)
-	if transition == nil {
-		return NewWorkflowExecutionError("soba", string(phase), "no transition defined")
+	// フェーズ定義を取得
+	phaseDef := domain.PhaseDefinitions[string(phase)]
+	if phaseDef == nil {
+		return NewWorkflowExecutionError("soba", string(phase), "phase not defined")
 	}
 
-	// ラベルを更新
-	if err := e.updateLabels(ctx, issueNumber, transition); err != nil {
-		return err
-	}
-
-	// フェーズの実行情報を取得
-	executionInfo := domain.GetPhaseExecutionInfo(phase)
-	if executionInfo == nil {
-		return NewWorkflowExecutionError("soba", string(phase), "no execution info defined")
+	// 現在実行されているフェーズに対して、トリガーラベルから実行ラベルへ更新
+	if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel); err != nil {
+		e.logger.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", phaseDef.TriggerLabel, "to", phaseDef.ExecutionLabel)
+		return WrapServiceError(err, "failed to update labels")
 	}
 
 	// 実行タイプに応じた処理
-	switch executionInfo.Type {
+	switch phaseDef.ExecutionType {
 	case domain.ExecutionTypeLabelOnly:
 		// ラベル更新のみの場合は、ここで完了
 		e.logger.Debug("Label-only phase completed", "issue", issueNumber, "phase", phase)
 	case domain.ExecutionTypeCommand:
 		// コマンド実行が必要な場合
-		if err := e.executeCommandPhase(cfg, issueNumber, phase, executionInfo); err != nil {
+		if err := e.executeCommandPhase(cfg, issueNumber, phase, phaseDef); err != nil {
 			return err
 		}
 	default:
-		return NewWorkflowExecutionError("soba", string(phase), fmt.Sprintf("unknown execution type: %s", executionInfo.Type))
+		return NewWorkflowExecutionError("soba", string(phase), fmt.Sprintf("unknown execution type: %s", phaseDef.ExecutionType))
 	}
 
 	e.logger.Info("Phase execution completed", "issue", issueNumber, "phase", phase)
 	return nil
 }
 
-// updateLabels はラベルを更新する
-func (e *workflowExecutor) updateLabels(ctx context.Context, issueNumber int, transition *domain.PhaseTransition) error {
-	if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, transition.From, transition.To); err != nil {
-		e.logger.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", transition.From, "to", transition.To)
-		return WrapServiceError(err, "failed to update labels")
-	}
-	e.logger.Debug("Updated labels", "issue", issueNumber, "from", transition.From, "to", transition.To)
-	return nil
-}
-
 // executeCommandPhase executes a command-based phase
-func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber int, phase domain.Phase, executionInfo *domain.PhaseExecutionInfo) error {
+func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber int, phase domain.Phase, phaseDef *domain.PhaseDefinition) error {
 	// Worktreeを準備（必要な場合）
-	if err := e.prepareWorkspaceIfNeeded(issueNumber, executionInfo); err != nil {
+	if err := e.prepareWorkspaceIfNeeded(issueNumber, phaseDef); err != nil {
 		return err
 	}
 
@@ -132,7 +117,7 @@ func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber i
 	}
 
 	// ペイン管理（必要な場合）
-	if executionInfo.RequiresPane {
+	if phaseDef.RequiresPane {
 		if err := e.managePane(sessionName, windowName); err != nil {
 			e.logger.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
 			return err
@@ -148,8 +133,8 @@ func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber i
 }
 
 // prepareWorkspaceIfNeeded はworktreeを準備する（必要な場合）
-func (e *workflowExecutor) prepareWorkspaceIfNeeded(issueNumber int, executionInfo *domain.PhaseExecutionInfo) error {
-	if !executionInfo.RequiresWorktree || e.workspace == nil {
+func (e *workflowExecutor) prepareWorkspaceIfNeeded(issueNumber int, phaseDef *domain.PhaseDefinition) error {
+	if !phaseDef.RequiresWorktree || e.workspace == nil {
 		return nil
 	}
 
@@ -232,7 +217,11 @@ func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, p
 
 // requiresWorktree はフェーズがworktreeを必要とするか判定する
 func requiresWorktree(phase domain.Phase) bool {
-	return phase == domain.PhasePlan || phase == domain.PhaseImplement || phase == domain.PhaseRevise
+	phaseDef := domain.PhaseDefinitions[string(phase)]
+	if phaseDef == nil {
+		return false
+	}
+	return phaseDef.RequiresWorktree
 }
 
 // managePane はペインを管理する（制限数チェック、古いペイン削除、新規作成、リサイズ）

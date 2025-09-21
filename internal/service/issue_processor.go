@@ -23,15 +23,13 @@ type issueProcessor struct {
 	owner        string
 	repo         string
 	executor     WorkflowExecutor
-	strategy     domain.PhaseStrategy
 }
 
 // NewIssueProcessor creates a new issue processor with dependencies
-func NewIssueProcessor(client GitHubClientInterface, executor WorkflowExecutor, strategy domain.PhaseStrategy) IssueProcessorInterface {
+func NewIssueProcessor(client GitHubClientInterface, executor WorkflowExecutor) IssueProcessorInterface {
 	return &issueProcessor{
 		githubClient: client,
 		executor:     executor,
-		strategy:     strategy,
 	}
 }
 
@@ -68,7 +66,7 @@ func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, i
 	}
 
 	// 現在のフェーズを判定
-	phase, err := p.strategy.GetCurrentPhase(labelNames)
+	phase, err := domain.GetCurrentPhaseFromLabels(labelNames)
 	if err != nil {
 		log.Debug("Failed to get current phase", "error", err, "issue", issue.Number)
 		return errors.WrapInternal(err, "failed to get current phase")
@@ -77,7 +75,7 @@ func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, i
 	log.Info("Processing issue", "issue", issue.Number, "phase", phase, "labels", labelNames)
 
 	// WorkflowExecutorを使ってフェーズを実行
-	if err := p.executor.ExecutePhase(ctx, cfg, issue.Number, phase, p.strategy); err != nil {
+	if err := p.executor.ExecutePhase(ctx, cfg, issue.Number, phase); err != nil {
 		log.Error("Failed to execute phase", "error", err, "issue", issue.Number, "phase", phase)
 		return errors.WrapInternal(err, "failed to execute phase")
 	}

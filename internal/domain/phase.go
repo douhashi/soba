@@ -27,54 +27,6 @@ const (
 	ExecutionTypeCommand PhaseExecutionType = "command"
 )
 
-// PhaseExecutionInfo contains execution characteristics for each phase
-type PhaseExecutionInfo struct {
-	Type             PhaseExecutionType
-	RequiresPane     bool
-	RequiresWorktree bool
-	AutoTransition   bool
-}
-
-// phaseExecutionInfo defines execution characteristics for each phase
-var phaseExecutionInfo = map[Phase]PhaseExecutionInfo{
-	PhaseQueue: {
-		Type:             ExecutionTypeLabelOnly,
-		RequiresPane:     false,
-		RequiresWorktree: false,
-		AutoTransition:   true,
-	},
-	PhasePlan: {
-		Type:             ExecutionTypeCommand,
-		RequiresPane:     true,
-		RequiresWorktree: true,
-		AutoTransition:   false,
-	},
-	PhaseImplement: {
-		Type:             ExecutionTypeCommand,
-		RequiresPane:     true,
-		RequiresWorktree: true,
-		AutoTransition:   false,
-	},
-	PhaseReview: {
-		Type:             ExecutionTypeCommand,
-		RequiresPane:     true,
-		RequiresWorktree: false,
-		AutoTransition:   false,
-	},
-	PhaseRevise: {
-		Type:             ExecutionTypeCommand,
-		RequiresPane:     true,
-		RequiresWorktree: true,
-		AutoTransition:   false,
-	},
-	PhaseMerge: {
-		Type:             ExecutionTypeLabelOnly,
-		RequiresPane:     false,
-		RequiresWorktree: false,
-		AutoTransition:   false,
-	},
-}
-
 // Label constants for soba workflow
 const (
 	LabelTodo            = "soba:todo"
@@ -91,152 +43,210 @@ const (
 	LabelLGTM            = "soba:lgtm"
 )
 
-// PhaseTransition represents a workflow transition
-type PhaseTransition struct {
-	From   string
-	To     string
-	Action string
+// PhaseDefinition はフェーズの完全な定義を表す
+type PhaseDefinition struct {
+	Name             string                // フェーズ名
+	TriggerLabel     string                // フェーズ開始のトリガーラベル
+	ExecutionLabel   string                // sobaが設定する実行中ラベル
+	ExecutionType    PhaseExecutionType    // 実行タイプ（ラベルのみ or コマンド実行）
+	RequiresPane     bool                  // tmuxペインが必要か
+	RequiresWorktree bool                  // gitワークツリーが必要か
+	CompletionLabels map[string]NextAction // 完了ラベルと次のアクション
 }
 
-// transitions defines the workflow transitions for each phase
-var transitions = map[Phase]PhaseTransition{
-	PhaseQueue: {
-		From:   LabelTodo,
-		To:     LabelQueued,
-		Action: "queue",
-	},
-	PhasePlan: {
-		From:   LabelQueued,
-		To:     LabelReady,
-		Action: "plan",
-	},
-	PhaseImplement: {
-		From:   LabelReady,
-		To:     LabelReviewRequested,
-		Action: "implement",
-	},
-	PhaseReview: {
-		From:   LabelReviewRequested,
-		To:     LabelDone,
-		Action: "review",
-	},
-	PhaseRevise: {
-		From:   LabelRequiresChanges,
-		To:     LabelReviewRequested,
-		Action: "revise",
-	},
+// NextAction は完了ラベルに対応する次のアクションを定義
+type NextAction struct {
+	RemoveLabel    string // 削除するラベル（実行中ラベルなど）
+	AutoTransition bool   // 自動的に次フェーズに遷移するか
+	NextPhase      string // 次のフェーズ名（自動遷移時）
 }
 
-// GetTransition returns the transition for the given phase
-func GetTransition(phase Phase) *PhaseTransition {
-	if transition, ok := transitions[phase]; ok {
-		return &transition
-	}
-	return nil
-}
-
-// GetPhaseExecutionInfo returns the execution info for the given phase
-func GetPhaseExecutionInfo(phase Phase) *PhaseExecutionInfo {
-	if info, ok := phaseExecutionInfo[phase]; ok {
-		return &info
-	}
-	return nil
-}
-
-// PhaseStrategy defines the interface for phase management
-type PhaseStrategy interface {
-	// GetCurrentPhase determines the current phase from labels
-	GetCurrentPhase(labels []string) (Phase, error)
-	// GetNextLabel returns the next label for the given phase
-	GetNextLabel(currentPhase Phase) (string, error)
-	// ValidateTransition validates if a transition from one phase to another is valid
-	ValidateTransition(from, to Phase) error
-}
-
-// DefaultPhaseStrategy is the default implementation of PhaseStrategy
-type DefaultPhaseStrategy struct {
-	labelToPhase map[string]Phase
-}
-
-// NewDefaultPhaseStrategy creates a new DefaultPhaseStrategy
-func NewDefaultPhaseStrategy() PhaseStrategy {
-	return &DefaultPhaseStrategy{
-		labelToPhase: map[string]Phase{
-			LabelTodo:            PhaseQueue,
-			LabelQueued:          PhasePlan,
-			LabelPlanning:        PhasePlan,
-			LabelReady:           PhaseImplement,
-			LabelDoing:           PhaseImplement,
-			LabelReviewRequested: PhaseReview,
-			LabelReviewing:       PhaseReview,
-			LabelRequiresChanges: PhaseRevise,
-			LabelRevising:        PhaseRevise,
-			LabelDone:            PhaseMerge,
-			LabelMerged:          PhaseMerge,
+// PhaseDefinitions は全フェーズの定義
+var PhaseDefinitions = map[string]*PhaseDefinition{
+	"queue": {
+		Name:             "queue",
+		TriggerLabel:     LabelTodo,
+		ExecutionLabel:   LabelQueued,
+		ExecutionType:    ExecutionTypeLabelOnly,
+		RequiresPane:     false,
+		RequiresWorktree: false,
+		CompletionLabels: map[string]NextAction{
+			LabelQueued: { // queuedになったら即座にplanへ
+				RemoveLabel:    "",
+				AutoTransition: true,
+				NextPhase:      "plan",
+			},
 		},
-	}
+	},
+	"plan": {
+		Name:             "plan",
+		TriggerLabel:     LabelQueued,
+		ExecutionLabel:   LabelPlanning,
+		ExecutionType:    ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: true,
+		CompletionLabels: map[string]NextAction{
+			LabelReady: { // 外部ツールがreadyを設定
+				RemoveLabel:    LabelPlanning,
+				AutoTransition: false, // ready状態で人間の判断を待つ
+				NextPhase:      "",
+			},
+		},
+	},
+	"implement": {
+		Name:             "implement",
+		TriggerLabel:     LabelReady,
+		ExecutionLabel:   LabelDoing,
+		ExecutionType:    ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: true,
+		CompletionLabels: map[string]NextAction{
+			LabelReviewRequested: { // 外部ツールがPR作成後に設定
+				RemoveLabel:    LabelDoing,
+				AutoTransition: false,
+				NextPhase:      "",
+			},
+		},
+	},
+	"review": {
+		Name:             "review",
+		TriggerLabel:     LabelReviewRequested,
+		ExecutionLabel:   LabelReviewing,
+		ExecutionType:    ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: false,
+		CompletionLabels: map[string]NextAction{
+			LabelDone: { // レビュー承認
+				RemoveLabel:    LabelReviewing,
+				AutoTransition: false,
+				NextPhase:      "",
+			},
+			LabelRequiresChanges: { // 修正要求
+				RemoveLabel:    LabelReviewing,
+				AutoTransition: false,
+				NextPhase:      "",
+			},
+		},
+	},
+	"revise": {
+		Name:             "revise",
+		TriggerLabel:     LabelRequiresChanges,
+		ExecutionLabel:   LabelRevising,
+		ExecutionType:    ExecutionTypeCommand,
+		RequiresPane:     true,
+		RequiresWorktree: true,
+		CompletionLabels: map[string]NextAction{
+			LabelReviewRequested: { // 修正後に再レビュー
+				RemoveLabel:    LabelRevising,
+				AutoTransition: false,
+				NextPhase:      "",
+			},
+		},
+	},
+	"merge": {
+		Name:             "merge",
+		TriggerLabel:     LabelDone,
+		ExecutionLabel:   LabelMerged,
+		ExecutionType:    ExecutionTypeLabelOnly,
+		RequiresPane:     false,
+		RequiresWorktree: false,
+		CompletionLabels: map[string]NextAction{
+			LabelMerged: {
+				RemoveLabel:    "",
+				AutoTransition: false,
+				NextPhase:      "",
+			},
+		},
+	},
 }
 
-// GetCurrentPhase determines the current phase from labels
-func (s *DefaultPhaseStrategy) GetCurrentPhase(labels []string) (Phase, error) {
-	var sobaLabels []string
+// GetPhaseByTrigger はトリガーラベルから対応するフェーズ定義を取得
+func GetPhaseByTrigger(label string) *PhaseDefinition {
+	for _, phase := range PhaseDefinitions {
+		if phase.TriggerLabel == label {
+			return phase
+		}
+	}
+	return nil
+}
+
+// GetPhaseByExecutionLabel は実行中ラベルから対応するフェーズ定義を取得
+func GetPhaseByExecutionLabel(label string) *PhaseDefinition {
+	for _, phase := range PhaseDefinitions {
+		if phase.ExecutionLabel == label {
+			return phase
+		}
+	}
+	return nil
+}
+
+// IsCompletionLabel は指定されたラベルが何らかのフェーズの完了ラベルかチェック
+func IsCompletionLabel(label string) bool {
+	for _, phase := range PhaseDefinitions {
+		if _, ok := phase.CompletionLabels[label]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// GetNextActionForCompletion は完了ラベルに対応する次のアクションを取得
+func GetNextActionForCompletion(executionLabel, completionLabel string) *NextAction {
+	phase := GetPhaseByExecutionLabel(executionLabel)
+	if phase == nil {
+		return nil
+	}
+
+	if action, ok := phase.CompletionLabels[completionLabel]; ok {
+		return &action
+	}
+	return nil
+}
+
+// GetCurrentPhaseFromLabels はラベルリストから現在のフェーズを判定する
+func GetCurrentPhaseFromLabels(labels []string) (Phase, error) {
+	// soba:で始まるラベルを探す（LGTMは除く）
+	var sobaLabel string
 	for _, label := range labels {
 		if strings.HasPrefix(label, "soba:") && label != LabelLGTM {
-			sobaLabels = append(sobaLabels, label)
+			if sobaLabel != "" {
+				// 複数のsobaラベルがある場合はエラー
+				return "", fmt.Errorf("multiple soba labels found")
+			}
+			sobaLabel = label
 		}
 	}
 
-	if len(sobaLabels) == 0 {
+	if sobaLabel == "" {
 		return "", fmt.Errorf("no soba label found")
 	}
 
-	if len(sobaLabels) > 1 {
-		return "", fmt.Errorf("multiple soba labels found: %v", sobaLabels)
+	// トリガーラベルから判定
+	if phase := GetPhaseByTrigger(sobaLabel); phase != nil {
+		return Phase(phase.Name), nil
 	}
 
-	phase, ok := s.labelToPhase[sobaLabels[0]]
-	if !ok {
-		return "", fmt.Errorf("unknown soba label: %s", sobaLabels[0])
+	// 実行中ラベルから判定
+	if phase := GetPhaseByExecutionLabel(sobaLabel); phase != nil {
+		return Phase(phase.Name), nil
 	}
 
-	return phase, nil
-}
-
-// GetNextLabel returns the next label for the given phase
-func (s *DefaultPhaseStrategy) GetNextLabel(currentPhase Phase) (string, error) {
-	transition := GetTransition(currentPhase)
-	if transition == nil {
-		return "", fmt.Errorf("no transition defined for phase: %s", currentPhase)
-	}
-	return transition.To, nil
-}
-
-// ValidateTransition validates if a transition from one phase to another is valid
-func (s *DefaultPhaseStrategy) ValidateTransition(from, to Phase) error {
-	// Define valid transitions
-	validTransitions := map[Phase][]Phase{
-		PhaseQueue:     {PhasePlan},
-		PhasePlan:      {PhaseImplement},
-		PhaseImplement: {PhaseReview},
-		PhaseReview:    {PhaseMerge, PhaseRevise},
-		PhaseRevise:    {PhaseReview},
-		PhaseMerge:     {}, // No transitions from merge
+	// 完了ラベルから判定（どのフェーズの完了ラベルか特定）
+	// review-requestedやrequires-changesなど、複数のフェーズで使われるラベルがある
+	switch sobaLabel {
+	case LabelReady:
+		return PhasePlan, nil // readyはplanの完了後
+	case LabelReviewRequested:
+		// review-requestedはimplementまたはreviseの完了後
+		// この場合、Reviewフェーズとみなす
+		return PhaseReview, nil
+	case LabelDone:
+		return PhaseReview, nil // doneはreviewの完了後
+	case LabelRequiresChanges:
+		return PhaseRevise, nil // requires-changesはreviewの完了後
+	case LabelMerged:
+		return PhaseMerge, nil
 	}
 
-	validToPhases, ok := validTransitions[from]
-	if !ok {
-		return fmt.Errorf("invalid from phase: %s", from)
-	}
-
-	for _, validTo := range validToPhases {
-		if validTo == to {
-			return nil
-		}
-	}
-
-	if len(validToPhases) == 0 {
-		return fmt.Errorf("no valid transitions from phase: %s", from)
-	}
-
-	return fmt.Errorf("invalid transition from %s to %s", from, to)
+	return "", fmt.Errorf("unknown soba label: %s", sobaLabel)
 }

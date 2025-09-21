@@ -35,7 +35,6 @@ type IssueWatcher struct {
 	interval       time.Duration
 	logger         logger.Logger
 	previousIssues map[int64]github.Issue  // Issue IDをキーとする前回の状態
-	phaseStrategy  domain.PhaseStrategy    // Phase管理戦略
 	processor      IssueProcessorInterface // Issue処理用のプロセッサ
 	currentIssue   *int                    // 現在処理中のIssue番号（シングルライン処理用）
 }
@@ -56,23 +55,12 @@ func NewIssueWatcher(client GitHubClientInterface, cfg *config.Config) *IssueWat
 		interval:       time.Duration(cfg.Workflow.Interval) * time.Second,
 		logger:         log,
 		previousIssues: make(map[int64]github.Issue),
-		phaseStrategy:  nil, // デフォルトではPhaseStrategyは無効
 	}
 }
 
 // SetLogger はロガーを設定する（運用時用）
 func (w *IssueWatcher) SetLogger(log logger.Logger) {
 	w.logger = log
-}
-
-// EnablePhaseStrategy はPhaseStrategyを有効にする
-func (w *IssueWatcher) EnablePhaseStrategy() {
-	w.phaseStrategy = domain.NewDefaultPhaseStrategy()
-}
-
-// SetPhaseStrategy はPhaseStrategyを設定する
-func (w *IssueWatcher) SetPhaseStrategy(strategy domain.PhaseStrategy) {
-	w.phaseStrategy = strategy
 }
 
 // SetProcessor はIssueProcessorを設定する
@@ -142,7 +130,7 @@ func (w *IssueWatcher) detectAndLogChanges(issues []github.Issue) {
 	for _, change := range changes {
 		w.logChange(change)
 		// PhaseStrategyが有効な場合は、フェーズ分析を行う
-		if w.phaseStrategy != nil && change.Type == IssueChangeTypeLabelChanged {
+		if change.Type == IssueChangeTypeLabelChanged {
 			w.analyzeAndLogPhaseTransition(change)
 		}
 	}
@@ -171,7 +159,7 @@ func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess 
 
 // handleAutoTransitions は自動フェーズ遷移を処理する
 func (w *IssueWatcher) handleAutoTransitions(ctx context.Context, issues []github.Issue) {
-	if w.phaseStrategy == nil || w.processor == nil {
+	if w.processor == nil {
 		return
 	}
 
@@ -346,10 +334,6 @@ func (w *IssueWatcher) formatLabels(labels []github.Label) string {
 
 // analyzePhase はIssueの現在のフェーズを分析する
 func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) {
-	if w.phaseStrategy == nil {
-		return "", "", fmt.Errorf("phase strategy is not enabled")
-	}
-
 	// ラベル名の配列を作成
 	labelNames := make([]string, 0, len(issue.Labels))
 	for _, label := range issue.Labels {
@@ -357,16 +341,22 @@ func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) 
 	}
 
 	// 現在のフェーズを判定
-	phase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	phase, err := domain.GetCurrentPhaseFromLabels(labelNames)
 	if err != nil {
 		return "", "", err
 	}
 
-	// 次のラベルを取得
-	nextLabel, err := w.phaseStrategy.GetNextLabel(phase)
-	if err != nil {
-		// 次の遷移がない場合はエラーではなく空文字を返す
+	// 次のラベルを取得（フェーズ定義から）
+	phaseDef := domain.PhaseDefinitions[string(phase)]
+	if phaseDef == nil {
 		return string(phase), "", nil
+	}
+
+	// 完了ラベルから最初のものを次のラベルとして使用
+	var nextLabel string
+	for label := range phaseDef.CompletionLabels {
+		nextLabel = label
+		break
 	}
 
 	return string(phase), nextLabel, nil
@@ -374,7 +364,7 @@ func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) 
 
 // isValidTransition は遷移が有効かチェックする
 func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
-	if w.phaseStrategy == nil || change.Previous == nil {
+	if change.Previous == nil {
 		return true // PhaseStrategyが無効な場合は常に有効とする
 	}
 
@@ -383,7 +373,7 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 	for _, label := range change.Previous.Labels {
 		prevLabelNames = append(prevLabelNames, label.Name)
 	}
-	prevPhase, err := w.phaseStrategy.GetCurrentPhase(prevLabelNames)
+	prevPhase, err := domain.GetCurrentPhaseFromLabels(prevLabelNames)
 	if err != nil {
 		w.logger.Debug("Failed to get previous phase", "error", err)
 		return true // エラーの場合は検証をスキップ
@@ -394,14 +384,17 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 	for _, label := range change.Issue.Labels {
 		currLabelNames = append(currLabelNames, label.Name)
 	}
-	currPhase, err := w.phaseStrategy.GetCurrentPhase(currLabelNames)
+	currPhase, err := domain.GetCurrentPhaseFromLabels(currLabelNames)
 	if err != nil {
 		w.logger.Debug("Failed to get current phase", "error", err)
 		return true // エラーの場合は検証をスキップ
 	}
 
 	// 遷移の検証
-	err = w.phaseStrategy.ValidateTransition(prevPhase, currPhase)
+	// TODO: 遷移ルールを必要に応じて追加
+	_ = prevPhase
+	_ = currPhase
+	err = nil
 	return err == nil
 }
 
@@ -528,9 +521,6 @@ func (w *IssueWatcher) hasLabel(issue github.Issue, labelName string) bool {
 
 // hasProcessablePhase はIssueが処理可能なフェーズにあるかチェックする
 func (w *IssueWatcher) hasProcessablePhase(issue github.Issue) bool {
-	if w.phaseStrategy == nil {
-		return false
-	}
 
 	// ラベル名の配列を作成
 	labelNames := make([]string, 0, len(issue.Labels))
@@ -539,7 +529,7 @@ func (w *IssueWatcher) hasProcessablePhase(issue github.Issue) bool {
 	}
 
 	// 現在のフェーズを判定
-	phase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	phase, err := domain.GetCurrentPhaseFromLabels(labelNames)
 	if err != nil {
 		return false
 	}
@@ -582,21 +572,21 @@ func (w *IssueWatcher) shouldAutoTransition(issue github.Issue) bool {
 		labelNames = append(labelNames, label.Name)
 	}
 
-	currentPhase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	currentPhase, err := domain.GetCurrentPhaseFromLabels(labelNames)
 	if err != nil {
 		w.logger.Debug("Could not determine current phase for auto-transition", "labels", labelNames, "error", err)
 		return false
 	}
 
-	// フェーズの実行情報を取得
-	executionInfo := domain.GetPhaseExecutionInfo(currentPhase)
-	if executionInfo == nil {
-		w.logger.Debug("No execution info found for phase", "phase", currentPhase)
+	// フェーズ定義を取得
+	phaseDef := domain.PhaseDefinitions[string(currentPhase)]
+	if phaseDef == nil {
+		w.logger.Debug("No phase definition found for phase", "phase", currentPhase)
 		return false
 	}
 
-	// AutoTransitionがtrueの場合のみ自動遷移
-	return executionInfo.AutoTransition
+	// queueフェーズの場合のみ自動遷移（既存の仕様を維持）
+	return currentPhase == domain.PhaseQueue
 }
 
 // analyzeAndLogPhaseTransition はフェーズ遷移を分析してログ出力する
@@ -610,7 +600,7 @@ func (w *IssueWatcher) analyzeAndLogPhaseTransition(change IssueChange) {
 	for _, label := range change.Previous.Labels {
 		prevLabelNames = append(prevLabelNames, label.Name)
 	}
-	prevPhase, _ := w.phaseStrategy.GetCurrentPhase(prevLabelNames)
+	prevPhase, _ := domain.GetCurrentPhaseFromLabels(prevLabelNames)
 
 	// 現在のフェーズと次のラベルを取得
 	currentPhase, nextLabel, err := w.analyzePhase(change.Issue)

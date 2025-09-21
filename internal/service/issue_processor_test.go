@@ -16,9 +16,8 @@ import (
 func TestNewIssueProcessor(t *testing.T) {
 	mockGithub := &MockGitHubClient{}
 	mockExecutor := &MockWorkflowExecutor{}
-	mockStrategy := domain.NewDefaultPhaseStrategy()
 
-	processor := NewIssueProcessor(mockGithub, mockExecutor, mockStrategy)
+	processor := NewIssueProcessor(mockGithub, mockExecutor)
 	assert.NotNil(t, processor)
 }
 
@@ -27,8 +26,8 @@ type MockWorkflowExecutor struct {
 	mock.Mock
 }
 
-func (m *MockWorkflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase, strategy domain.PhaseStrategy) error {
-	args := m.Called(ctx, cfg, issueNumber, phase, strategy)
+func (m *MockWorkflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error {
+	args := m.Called(ctx, cfg, issueNumber, phase)
 	return args.Error(0)
 }
 
@@ -95,7 +94,7 @@ func TestIssueProcessor_ProcessIssue(t *testing.T) {
 			expectPhase: domain.PhaseQueue,
 			expectError: false,
 			setupMock: func(m *MockWorkflowExecutor) {
-				m.On("ExecutePhase", mock.Anything, mock.Anything, 1, domain.PhaseQueue, mock.Anything).Return(nil)
+				m.On("ExecutePhase", mock.Anything, mock.Anything, 1, domain.PhaseQueue).Return(nil)
 			},
 		},
 		{
@@ -110,7 +109,7 @@ func TestIssueProcessor_ProcessIssue(t *testing.T) {
 			expectPhase: domain.PhasePlan,
 			expectError: false,
 			setupMock: func(m *MockWorkflowExecutor) {
-				m.On("ExecutePhase", mock.Anything, mock.Anything, 2, domain.PhasePlan, mock.Anything).Return(nil)
+				m.On("ExecutePhase", mock.Anything, mock.Anything, 2, domain.PhasePlan).Return(nil)
 			},
 		},
 		{
@@ -125,7 +124,7 @@ func TestIssueProcessor_ProcessIssue(t *testing.T) {
 			expectPhase: domain.PhaseImplement,
 			expectError: false,
 			setupMock: func(m *MockWorkflowExecutor) {
-				m.On("ExecutePhase", mock.Anything, mock.Anything, 3, domain.PhaseImplement, mock.Anything).Return(nil)
+				m.On("ExecutePhase", mock.Anything, mock.Anything, 3, domain.PhaseImplement).Return(nil)
 			},
 		},
 		{
@@ -155,7 +154,7 @@ func TestIssueProcessor_ProcessIssue(t *testing.T) {
 			expectPhase: domain.PhaseQueue,
 			expectError: true,
 			setupMock: func(m *MockWorkflowExecutor) {
-				m.On("ExecutePhase", mock.Anything, mock.Anything, 5, domain.PhaseQueue, mock.Anything).Return(fmt.Errorf("execution failed"))
+				m.On("ExecutePhase", mock.Anything, mock.Anything, 5, domain.PhaseQueue).Return(fmt.Errorf("execution failed"))
 			},
 		},
 	}
@@ -164,13 +163,12 @@ func TestIssueProcessor_ProcessIssue(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockGithub := &MockGitHubClient{}
 			mockExecutor := &MockWorkflowExecutor{}
-			mockStrategy := domain.NewDefaultPhaseStrategy()
 
 			if tt.setupMock != nil {
 				tt.setupMock(mockExecutor)
 			}
 
-			processor := NewIssueProcessor(mockGithub, mockExecutor, mockStrategy)
+			processor := NewIssueProcessor(mockGithub, mockExecutor)
 
 			ctx := context.Background()
 			cfg := &config.Config{

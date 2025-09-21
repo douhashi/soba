@@ -82,7 +82,6 @@ func TestIssueWatcher_SingleLineProcessing(t *testing.T) {
 	}
 
 	watcher := NewIssueWatcher(client, cfg)
-	watcher.EnablePhaseStrategy()
 	watcher.SetProcessor(processor)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -173,7 +172,6 @@ func TestIssueWatcher_ContinueAfterCompletion(t *testing.T) {
 	}
 
 	watcher := NewIssueWatcher(client, cfg)
-	watcher.EnablePhaseStrategy()
 	watcher.SetProcessor(processor)
 
 	ctx := context.Background()
@@ -398,7 +396,6 @@ func TestIssueWatcher_ProcessWithPhaseStrategy(t *testing.T) {
 	}
 
 	watcher := NewIssueWatcher(client, cfg)
-	watcher.EnablePhaseStrategy()
 
 	// 初回実行
 	changes := watcher.detectChanges(mockIssues)
@@ -430,7 +427,6 @@ func TestIssueWatcher_PhaseTransitionValidation(t *testing.T) {
 	}
 
 	watcher := NewIssueWatcher(client, cfg)
-	watcher.EnablePhaseStrategy()
 
 	// 初期状態: soba:planning
 	issue1 := github.Issue{

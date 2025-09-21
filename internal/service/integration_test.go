@@ -107,19 +107,17 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:queued", "soba:planning").Return(nil).Maybe()
 
 	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessorUpdater, logger.NewNopLogger())
-	strategy := domain.NewDefaultPhaseStrategy()
 
 	// ProcessorにProcessIssueを実装するためのモックを使用
 	processor := &MockIssueProcessor{
 		ProcessIssueFunc: func(ctx context.Context, cfg *config.Config, issue github.Issue) error {
 			// Queueフェーズを実行
-			return executor.ExecutePhase(ctx, cfg, issue.Number, domain.PhaseQueue, strategy)
+			return executor.ExecutePhase(ctx, cfg, issue.Number, domain.PhaseQueue)
 		},
 	}
 
 	// IssueWatcherを初期化
 	watcher := NewIssueWatcher(mockGitHub, cfg)
-	watcher.SetPhaseStrategy(strategy)
 	watcher.SetProcessor(processor)
 
 	// コンテキストとタイムアウト設定
@@ -193,11 +191,9 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	}
 
 	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
-	strategy := domain.NewDefaultPhaseStrategy()
-	processor := NewIssueProcessor(mockGitHub, executor, strategy)
+	processor := NewIssueProcessor(mockGitHub, executor)
 
 	watcher := NewIssueWatcher(mockGitHub, cfg)
-	watcher.SetPhaseStrategy(strategy)
 	watcher.SetProcessor(processor)
 
 	ctx := context.Background()

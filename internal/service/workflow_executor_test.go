@@ -226,10 +226,9 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				},
 			}
 
-			phaseStrategy := domain.NewDefaultPhaseStrategy()
 			ctx := context.Background()
 
-			err := executor.ExecutePhase(ctx, cfg, tt.issueNumber, tt.phase, phaseStrategy)
+			err := executor.ExecutePhase(ctx, cfg, tt.issueNumber, tt.phase)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -363,8 +362,7 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 		},
 	}
 
-	strategy := domain.NewDefaultPhaseStrategy()
-	err := executor.ExecutePhase(context.Background(), cfg, 1, domain.PhasePlan, strategy)
+	err := executor.ExecutePhase(context.Background(), cfg, 1, domain.PhasePlan)
 
 	assert.NoError(t, err)
 	mockWorkspace.AssertCalled(t, "PrepareWorkspace", 1) // worktree準備が呼ばれたことを確認
