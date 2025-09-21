@@ -30,6 +30,7 @@ type IssueProcessorUpdater interface {
 // WorkflowExecutor executes workflow phases
 type WorkflowExecutor interface {
 	ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase interface{}) error
+	SetIssueProcessor(processor IssueProcessorUpdater)
 }
 
 // IssueWatcher watches for issue changes
@@ -38,6 +39,7 @@ type IssueWatcher interface {
 	SetProcessor(processor IssueProcessorInterface)
 	SetQueueManager(manager interface{})
 	SetLogger(logger interface{})
+	SetWorkflowExecutor(executor WorkflowExecutor)
 }
 
 // PRWatcher watches for PR changes

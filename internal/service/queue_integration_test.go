@@ -68,6 +68,10 @@ func (m *MockIntegrationWorkflowExecutor) ExecutePhase(ctx context.Context, cfg 
 	return args.Error(0)
 }
 
+func (m *MockIntegrationWorkflowExecutor) SetIssueProcessor(processor IssueProcessorUpdater) {
+	m.Called(processor)
+}
+
 func TestQueueIntegration_TodoToQueuedTransition(t *testing.T) {
 	// テスト用のコンテキストと設定
 	ctx := context.Background()

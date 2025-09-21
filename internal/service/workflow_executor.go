@@ -22,6 +22,8 @@ const (
 type WorkflowExecutor interface {
 	// ExecutePhase は指定されたフェーズを実行する
 	ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error
+	// SetIssueProcessor はIssueProcessorを設定する
+	SetIssueProcessor(processor IssueProcessorUpdater)
 }
 
 // workflowExecutor はWorkflowExecutorの実装
@@ -347,4 +349,9 @@ func (e *workflowExecutor) getPhaseCommand(cfg *config.Config, phase domain.Phas
 		// Queue, Mergeなどのフェーズはコマンドなし
 		return config.PhaseCommand{}
 	}
+}
+
+// SetIssueProcessor はIssueProcessorを設定する
+func (e *workflowExecutor) SetIssueProcessor(processor IssueProcessorUpdater) {
+	e.issueProcessor = processor
 }

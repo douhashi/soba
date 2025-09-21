@@ -87,8 +87,11 @@ func (r *DependencyResolver) ResolveServices(clients *ResolvedClients) (*Resolve
 	issueProcessor := serviceFactory.CreateIssueProcessor(clients.GitHubClient, workflowExecutor)
 	services.IssueProcessor = issueProcessor
 
+	// Phase 3.5: Set issue processor to workflow executor (completes the circular dependency)
+	workflowExecutor.SetIssueProcessor(issueProcessor)
+
 	// Phase 4: Create watchers and other services
-	issueWatcher := r.createIssueWatcher(clients, issueProcessor)
+	issueWatcher := r.createIssueWatcher(clients, issueProcessor, workflowExecutor)
 	services.IssueWatcher = issueWatcher
 
 	prWatcher := r.createPRWatcher(clients)
@@ -109,9 +112,10 @@ func (r *DependencyResolver) createWorkspaceManager(clients *ResolvedClients) Gi
 }
 
 // createIssueWatcher creates and configures issue watcher
-func (r *DependencyResolver) createIssueWatcher(clients *ResolvedClients, processor IssueProcessorInterface) IssueWatcher {
+func (r *DependencyResolver) createIssueWatcher(clients *ResolvedClients, processor IssueProcessorInterface, workflowExecutor WorkflowExecutor) IssueWatcher {
 	watcher := serviceFactory.CreateIssueWatcher(clients.GitHubClient, r.config)
 	watcher.SetProcessor(processor)
+	watcher.SetWorkflowExecutor(workflowExecutor)
 
 	queueManager := serviceFactory.CreateQueueManager(clients.GitHubClient, "", "")
 	watcher.SetQueueManager(queueManager)

@@ -59,6 +59,13 @@ func (a *WorkflowExecutorAdapter) ExecutePhase(ctx context.Context, cfg *config.
 	return fmt.Errorf("invalid phase type: %T", phase)
 }
 
+func (a *WorkflowExecutorAdapter) SetIssueProcessor(processor builder.IssueProcessorUpdater) {
+	// Convert builder interface to concrete type
+	if adapter, ok := processor.(*IssueProcessorAdapter); ok {
+		a.WorkflowExecutor.SetIssueProcessor(adapter.IssueProcessorInterface)
+	}
+}
+
 // IssueWatcherAdapter adapts IssueWatcher to builder interface
 type IssueWatcherAdapter struct {
 	*IssueWatcher
@@ -81,6 +88,12 @@ func (a *IssueWatcherAdapter) SetQueueManager(manager interface{}) {
 func (a *IssueWatcherAdapter) SetLogger(log interface{}) {
 	if l, ok := log.(logger.Logger); ok {
 		a.IssueWatcher.SetLogger(l)
+	}
+}
+
+func (a *IssueWatcherAdapter) SetWorkflowExecutor(executor builder.WorkflowExecutor) {
+	if adapter, ok := executor.(*WorkflowExecutorAdapter); ok {
+		a.IssueWatcher.SetWorkflowExecutor(adapter.WorkflowExecutor)
 	}
 }
 
