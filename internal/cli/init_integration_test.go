@@ -26,6 +26,15 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err := cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
 
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
 		// Add remote
 		cmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
 		output, err = cmd.CombinedOutput()
@@ -59,6 +68,15 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err := cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
 
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
 		// Add SSH remote
 		cmd = exec.Command("git", "remote", "add", "origin", "git@github.com:ssh-owner/ssh-repo.git")
 		output, err = cmd.CombinedOutput()
@@ -91,6 +109,15 @@ func TestInitWithGitRepository(t *testing.T) {
 		cmd := exec.Command("git", "init")
 		output, err := cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
 
 		// Execute init
 		err = runInitWithClient(context.Background(), []string{}, nil)
