@@ -62,7 +62,6 @@ func (m *MockGitClient) RemoveWorktree(path string) error {
 	return nil
 }
 
-
 // WorktreeExists implements git.Client interface
 func (m *MockGitClient) WorktreeExists(path string) bool {
 	return false
