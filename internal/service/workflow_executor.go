@@ -49,7 +49,7 @@ func NewWorkflowExecutor(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManag
 
 // ExecutePhase は指定されたフェーズを実行する
 func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase, strategy domain.PhaseStrategy) error {
-	log := logger.NewNopLogger()
+	log := logger.NewLogger(logger.GetLogger())
 	log.Info("Executing phase", "issue", issueNumber, "phase", phase)
 
 	// IssueProcessorに設定を適用
@@ -100,7 +100,7 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 
 // updateLabels はラベルを更新する
 func (e *workflowExecutor) updateLabels(ctx context.Context, issueNumber int, transition *domain.PhaseTransition) error {
-	log := logger.NewNopLogger()
+	log := logger.NewLogger(logger.GetLogger())
 	if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, transition.From, transition.To); err != nil {
 		log.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", transition.From, "to", transition.To)
 		return WrapServiceError(err, "failed to update labels")
@@ -115,7 +115,7 @@ func (e *workflowExecutor) prepareWorkspaceIfNeeded(phase domain.Phase, issueNum
 		return nil
 	}
 
-	log := logger.NewNopLogger()
+	log := logger.NewLogger(logger.GetLogger())
 	log.Info("Preparing workspace for issue", "issue", issueNumber)
 	if err := e.workspace.PrepareWorkspace(issueNumber); err != nil {
 		log.Error("Failed to prepare workspace", "error", err, "issue", issueNumber)
@@ -127,7 +127,7 @@ func (e *workflowExecutor) prepareWorkspaceIfNeeded(phase domain.Phase, issueNum
 
 // setupTmuxSession はtmuxセッションとウィンドウをセットアップする
 func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) error {
-	log := logger.NewNopLogger()
+	log := logger.NewLogger(logger.GetLogger())
 
 	// セッションが存在しなければ作成
 	if !e.tmux.SessionExists(sessionName) {
@@ -158,10 +158,15 @@ func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) erro
 
 // executeCommand はフェーズコマンドを実行する
 func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, phase domain.Phase, sessionName, windowName string) error {
-	log := logger.NewNopLogger()
+	log := logger.NewLogger(logger.GetLogger())
 
-	command := e.buildCommand(e.getPhaseCommand(cfg, phase), issueNumber)
+	phaseCommand := e.getPhaseCommand(cfg, phase)
+	command := e.buildCommand(phaseCommand, issueNumber)
+
+	log.Debug("Phase command details", "issue", issueNumber, "phase", phase, "phaseCommand", phaseCommand, "builtCommand", command)
+
 	if command == "" {
+		log.Info("No command defined for phase, skipping execution", "issue", issueNumber, "phase", phase)
 		return nil
 	}
 
@@ -199,7 +204,7 @@ func requiresWorktree(phase domain.Phase) bool {
 
 // managePane はペインを管理する（制限数チェック、古いペイン削除、新規作成、リサイズ）
 func (e *workflowExecutor) managePane(sessionName, windowName string) error {
-	log := logger.NewNopLogger()
+	log := logger.NewLogger(logger.GetLogger())
 
 	// 現在のペイン数を取得
 	paneCount, err := e.tmux.GetPaneCount(sessionName, windowName)
