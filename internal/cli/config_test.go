@@ -42,7 +42,6 @@ slack:
   notifications_enabled: false
 git:
   worktree_base_path: .git/soba/worktrees
-  setup_workspace: true
 phase:
   plan:
     command: plan.sh

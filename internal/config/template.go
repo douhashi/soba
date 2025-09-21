@@ -60,8 +60,6 @@ slack:
 git:
   # Base path for git worktrees
   worktree_base_path: .git/soba/worktrees
-  # Auto-setup workspace on phase start (default: true)
-  setup_workspace: true
 
 # Logging settings
 log:

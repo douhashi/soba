@@ -41,7 +41,6 @@ type SlackConfig struct {
 
 type GitConfig struct {
 	WorktreeBasePath string `yaml:"worktree_base_path"`
-	SetupWorkspace   bool   `yaml:"setup_workspace"`
 	BaseBranch       string `yaml:"base_branch"`
 }
 

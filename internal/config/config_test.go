@@ -34,7 +34,6 @@ slack:
 
 git:
   worktree_base_path: .git/test/worktrees
-  setup_workspace: true
 
 phase:
   plan:
@@ -212,7 +211,6 @@ func TestConfigStructFields(t *testing.T) {
 		},
 		Git: GitConfig{
 			WorktreeBasePath: ".git/soba/worktrees",
-			SetupWorkspace:   true,
 		},
 		Phase: PhaseConfig{
 			Plan: PhaseCommand{

@@ -120,7 +120,6 @@ func TestDisplayConfig(t *testing.T) {
 		},
 		Git: GitConfig{
 			WorktreeBasePath: ".git/soba/worktrees",
-			SetupWorkspace:   true,
 		},
 		Phase: PhaseConfig{
 			Plan: PhaseCommand{
