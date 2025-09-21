@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/domain"
+	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/pkg/errors"
 	"github.com/douhashi/soba/pkg/logger"
 )
@@ -24,20 +27,42 @@ type DaemonService interface {
 // IssueProcessorInterface はIssue処理のインターフェース
 type IssueProcessorInterface interface {
 	Process(ctx context.Context, cfg *config.Config) error
+	ProcessIssue(ctx context.Context, cfg *config.Config, issue github.Issue) error
 	UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error
 }
 
 type daemonService struct {
 	workDir   string
 	processor IssueProcessorInterface
+	watcher   *IssueWatcher
 }
 
 // NewDaemonService creates a new daemon service
 func NewDaemonService() DaemonService {
 	workDir, _ := os.Getwd()
+
+	// 依存関係を初期化
+	tokenProvider := github.NewDefaultTokenProvider()
+	githubClient, _ := github.NewClient(tokenProvider, &github.ClientOptions{})
+	tmuxClient := tmux.NewClient()
+	workspace := NewGitWorkspaceManager(workDir)
+	processor := NewIssueProcessor() // 一時的に既存のコンストラクタを使用
+	executor := NewWorkflowExecutor(tmuxClient, workspace, processor)
+	strategy := domain.NewDefaultPhaseStrategy()
+
+	// ProcessorをExecutorとStrategyと一緒に再初期化
+	processorWithDeps := NewIssueProcessorWithDependencies(githubClient, executor, strategy)
+
+	// IssueWatcherを初期化
+	// 注: configは後でStartForeground/StartDaemonで設定される
+	watcher := NewIssueWatcher(githubClient, &config.Config{})
+	watcher.SetPhaseStrategy(strategy)
+	watcher.SetProcessor(processorWithDeps)
+
 	return &daemonService{
 		workDir:   workDir,
-		processor: NewIssueProcessor(),
+		processor: processorWithDeps,
+		watcher:   watcher,
 	}
 }
 
@@ -46,27 +71,13 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 	log := logger.NewLogger(logger.GetLogger())
 	log.Info("Starting Issue monitoring in foreground mode")
 
-	ticker := time.NewTicker(time.Duration(cfg.Workflow.Interval) * time.Second)
-	defer ticker.Stop()
+	// IssueWatcherに設定を反映
+	d.watcher.config = cfg
+	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
+	d.watcher.SetLogger(log)
 
-	// 最初に一度実行
-	if err := d.processor.Process(ctx, cfg); err != nil {
-		log.Error("Failed to process issues", "error", err)
-		return err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info("Stopping Issue monitoring (context canceled)")
-			return nil
-		case <-ticker.C:
-			if err := d.processor.Process(ctx, cfg); err != nil {
-				log.Error("Failed to process issues", "error", err)
-				// エラーが発生してもループを継続
-			}
-		}
-	}
+	// IssueWatcherを起動
+	return d.watcher.Start(ctx)
 }
 
 // StartDaemon starts Issue monitoring in daemon mode

@@ -34,8 +34,9 @@ type IssueWatcher struct {
 	config         *config.Config
 	interval       time.Duration
 	logger         logger.Logger
-	previousIssues map[int64]github.Issue // Issue IDをキーとする前回の状態
-	phaseStrategy  domain.PhaseStrategy   // Phase管理戦略
+	previousIssues map[int64]github.Issue  // Issue IDをキーとする前回の状態
+	phaseStrategy  domain.PhaseStrategy    // Phase管理戦略
+	processor      IssueProcessorInterface // Issue処理用のプロセッサ
 }
 
 // NewIssueWatcher は新しいIssueWatcherを作成する
@@ -71,6 +72,11 @@ func (w *IssueWatcher) EnablePhaseStrategy() {
 // SetPhaseStrategy はPhaseStrategyを設定する
 func (w *IssueWatcher) SetPhaseStrategy(strategy domain.PhaseStrategy) {
 	w.phaseStrategy = strategy
+}
+
+// SetProcessor はIssueProcessorを設定する
+func (w *IssueWatcher) SetProcessor(processor IssueProcessorInterface) {
+	w.processor = processor
 }
 
 // Start はIssue監視を開始する
@@ -115,6 +121,12 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 			// PhaseStrategyが有効な場合は、フェーズ分析を行う
 			if w.phaseStrategy != nil && change.Type == IssueChangeTypeLabelChanged {
 				w.analyzeAndLogPhaseTransition(change)
+			}
+			// IssueProcessorが設定されている場合、Issueを処理する
+			if w.processor != nil && change.Type == IssueChangeTypeLabelChanged {
+				if err := w.processor.ProcessIssue(ctx, w.config, change.Issue); err != nil {
+					w.logger.Error("Failed to process issue", "error", err, "issue", change.Issue.Number)
+				}
 			}
 		}
 	}

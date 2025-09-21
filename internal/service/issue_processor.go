@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/pkg/errors"
 	"github.com/douhashi/soba/pkg/logger"
@@ -21,11 +22,50 @@ type issueProcessor struct {
 	githubClient GitHubClientInterface
 	owner        string
 	repo         string
+	executor     WorkflowExecutor
+	strategy     domain.PhaseStrategy
 }
 
 // NewIssueProcessor creates a new issue processor
 func NewIssueProcessor() IssueProcessorInterface {
 	return &issueProcessor{}
+}
+
+// NewIssueProcessorWithDependencies creates a new issue processor with dependencies
+func NewIssueProcessorWithDependencies(client GitHubClientInterface, executor WorkflowExecutor, strategy domain.PhaseStrategy) IssueProcessorInterface {
+	return &issueProcessor{
+		githubClient: client,
+		executor:     executor,
+		strategy:     strategy,
+	}
+}
+
+// ProcessIssue processes a single issue
+func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, issue github.Issue) error {
+	log := logger.NewNopLogger() // テスト環境でのロガー競合を避けるためNopLoggerを使用
+
+	// ラベル名の配列を取得
+	labelNames := make([]string, 0, len(issue.Labels))
+	for _, label := range issue.Labels {
+		labelNames = append(labelNames, label.Name)
+	}
+
+	// 現在のフェーズを判定
+	phase, err := p.strategy.GetCurrentPhase(labelNames)
+	if err != nil {
+		log.Debug("Failed to get current phase", "error", err, "issue", issue.Number)
+		return errors.WrapInternal(err, "failed to get current phase")
+	}
+
+	log.Info("Processing issue", "issue", issue.Number, "phase", phase, "labels", labelNames)
+
+	// WorkflowExecutorを使ってフェーズを実行
+	if err := p.executor.ExecutePhase(ctx, cfg, issue.Number, phase, p.strategy); err != nil {
+		log.Error("Failed to execute phase", "error", err, "issue", issue.Number, "phase", phase)
+		return errors.WrapInternal(err, "failed to execute phase")
+	}
+
+	return nil
 }
 
 // Process processes issues from GitHub repository
