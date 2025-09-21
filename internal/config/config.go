@@ -16,6 +16,7 @@ type Config struct {
 	Slack    SlackConfig    `yaml:"slack"`
 	Git      GitConfig      `yaml:"git"`
 	Phase    PhaseConfig    `yaml:"phase"`
+	Log      LogConfig      `yaml:"log"`
 }
 
 type GitHubConfig struct {
@@ -55,6 +56,11 @@ type PhaseCommand struct {
 	Command   string   `yaml:"command"`
 	Options   []string `yaml:"options"`
 	Parameter string   `yaml:"parameter"`
+}
+
+type LogConfig struct {
+	OutputPath     string `yaml:"output_path"`
+	RetentionCount int    `yaml:"retention_count"`
 }
 
 func Load(path string) (*Config, error) {
@@ -137,5 +143,11 @@ func (c *Config) setDefaults() {
 	}
 	if c.Git.BaseBranch == "" {
 		c.Git.BaseBranch = "main"
+	}
+	if c.Log.OutputPath == "" {
+		c.Log.OutputPath = fmt.Sprintf(".soba/logs/soba-%d.log", os.Getpid())
+	}
+	if c.Log.RetentionCount == 0 {
+		c.Log.RetentionCount = 10
 	}
 }

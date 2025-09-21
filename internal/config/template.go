@@ -63,6 +63,14 @@ git:
   # Auto-setup workspace on phase start (default: true)
   setup_workspace: true
 
+# Logging settings
+log:
+  # Log file output path (default: .soba/logs/soba-{pid}.log)
+  # You can use environment variables
+  output_path: .soba/logs/soba-${PID}.log
+  # Number of log files to retain (default: 10)
+  retention_count: 10
+
 # Phase commands (optional - for custom Claude commands)
 phase:
   plan:

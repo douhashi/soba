@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -321,4 +322,71 @@ func TestLoggerParseLevelFromString(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestInitWithFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "test.log")
+
+	cfg := Config{
+		Environment: "development",
+		Level:       slog.LevelInfo,
+		FilePath:    logPath,
+	}
+
+	err := InitWithFile(cfg)
+	require.NoError(t, err)
+
+	logger := GetLogger()
+	logger.Info("test message", "key", "value")
+
+	// ファイルが作成されているか確認
+	_, err = os.Stat(logPath)
+	assert.NoError(t, err)
+
+	// ファイルにログが出力されているか確認
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "test message")
+	assert.Contains(t, string(content), "key=value")
+
+	// クローズ
+	CloseFileWriter()
+}
+
+func TestInitWithFileAndStdout(t *testing.T) {
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "test.log")
+	buf := &bytes.Buffer{}
+
+	// 標準出力をキャプチャするためにバッファに変更
+	oldStdout := os.Stdout
+	_, w, _ := os.Pipe()
+	os.Stdout = w
+	defer func() {
+		os.Stdout = oldStdout
+	}()
+
+	cfg := Config{
+		Environment: "development",
+		Level:       slog.LevelInfo,
+		FilePath:    logPath,
+		Output:      buf, // MultiWriterで両方に出力
+	}
+
+	err := InitWithFile(cfg)
+	require.NoError(t, err)
+
+	logger := GetLogger()
+	logger.Info("dual output test")
+
+	w.Close()
+	os.Stdout = oldStdout
+
+	// ファイルに出力されているか確認
+	content, err := os.ReadFile(logPath)
+	require.NoError(t, err)
+	assert.Contains(t, string(content), "dual output test")
+
+	CloseFileWriter()
 }

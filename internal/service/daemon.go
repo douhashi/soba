@@ -236,6 +236,38 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 		return errors.WrapInternal(err, "failed to create logs directory")
 	}
 
+	// ログファイルパスを決定（環境変数展開）
+	logPath := cfg.Log.OutputPath
+	if strings.Contains(logPath, "${PID}") {
+		logPath = strings.ReplaceAll(logPath, "${PID}", strconv.Itoa(os.Getpid()))
+	}
+	logPath = os.ExpandEnv(logPath)
+
+	// 相対パスの場合はworkDirからの相対パスとして解釈
+	if !filepath.IsAbs(logPath) {
+		logPath = filepath.Join(d.workDir, logPath)
+	}
+
+	// ログファイル初期化
+	if err := logger.InitWithFile(logger.Config{
+		Environment: "production",
+		Level:       logger.ParseLevel(os.Getenv("LOG_LEVEL")),
+		FilePath:    logPath,
+	}); err != nil {
+		log.Error("Failed to initialize log file", "error", err, "path", logPath)
+		// ログファイル初期化に失敗してもデーモンは継続（stdout出力のみ）
+	}
+
+	// 古いログファイルのクリーンアップ
+	if cfg.Log.RetentionCount > 0 {
+		logDir := filepath.Dir(logPath)
+		pattern := "soba-*.log"
+		if err := logger.CleanupOldLogFiles(logDir, pattern, cfg.Log.RetentionCount); err != nil {
+			log.Warn("Failed to cleanup old log files", "error", err)
+			// クリーンアップに失敗してもデーモンは継続
+		}
+	}
+
 	// tmuxセッションを初期化
 	if err := d.initializeTmuxSession(cfg); err != nil {
 		return err
@@ -247,7 +279,7 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 		return err
 	}
 
-	log.Info("Daemon started successfully")
+	log.Info("Daemon started successfully", "logFile", logPath)
 
 	// watchers設定と起動（共通処理を使用）
 	return d.configureAndStartWatchers(ctx, cfg, log)
