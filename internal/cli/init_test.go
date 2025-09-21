@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/infra/github"
 )
 
 func TestInitCommand(t *testing.T) {
@@ -145,4 +147,127 @@ func TestInitCommand(t *testing.T) {
 		assert.Equal(t, ".git/soba/worktrees", loadedConfig.Git.WorktreeBasePath)
 		assert.True(t, loadedConfig.Git.SetupWorkspace)
 	})
+
+	t.Run("should create GitHub labels when config has repository info", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Mock GitHub client
+		mockClient := &MockGitHubClient{
+			CreateLabelCalls: []CreateLabelCall{},
+			ListLabelsCalls:  []ListLabelsCall{},
+		}
+
+		// Execute with mock client (this will create config first)
+		err := runInitWithClient(context.Background(), []string{}, mockClient)
+
+		// Assert
+		assert.NoError(t, err)
+
+		// Should have attempted to create labels for default repository
+		assert.GreaterOrEqual(t, len(mockClient.ListLabelsCalls), 1, "Should call ListLabels at least once")
+
+		if len(mockClient.ListLabelsCalls) > 0 {
+			// Verify first call is to list existing labels
+			listCall := mockClient.ListLabelsCalls[0]
+			assert.Equal(t, "douhashi", listCall.Owner)
+			assert.Equal(t, "soba-cli", listCall.Repo)
+		}
+	})
+
+	t.Run("should skip label creation if no repository configured", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Execute with no config file (should create default config)
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
+
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+
+		err := cmd.Execute()
+
+		// Assert - should succeed even without GitHub configuration
+		assert.NoError(t, err)
+		assert.Contains(t, buf.String(), "Successfully created config file")
+	})
+
+	t.Run("should handle GitHub API errors gracefully", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Mock GitHub client that returns errors
+		mockClient := &MockGitHubClient{
+			ListLabelsError: assert.AnError,
+		}
+
+		// Execute with mock client (this will create default config)
+		err := runInitWithClient(context.Background(), []string{}, mockClient)
+
+		// Assert - should not fail completely, but log the error
+		assert.NoError(t, err, "Init should not fail due to GitHub API errors")
+	})
+}
+
+// Mock GitHub client for testing
+type MockGitHubClient struct {
+	CreateLabelCalls []CreateLabelCall
+	ListLabelsCalls  []ListLabelsCall
+	CreateLabelError error
+	ListLabelsError  error
+	ExistingLabels   []github.Label
+}
+
+type CreateLabelCall struct {
+	Owner   string
+	Repo    string
+	Request github.CreateLabelRequest
+}
+
+type ListLabelsCall struct {
+	Owner string
+	Repo  string
+}
+
+func (m *MockGitHubClient) CreateLabel(ctx context.Context, owner, repo string, request github.CreateLabelRequest) (*github.Label, error) {
+	m.CreateLabelCalls = append(m.CreateLabelCalls, CreateLabelCall{
+		Owner:   owner,
+		Repo:    repo,
+		Request: request,
+	})
+
+	if m.CreateLabelError != nil {
+		return nil, m.CreateLabelError
+	}
+
+	return &github.Label{
+		ID:          int64(len(m.CreateLabelCalls)),
+		Name:        request.Name,
+		Color:       request.Color,
+		Description: request.Description,
+	}, nil
+}
+
+func (m *MockGitHubClient) ListLabels(ctx context.Context, owner, repo string) ([]github.Label, error) {
+	m.ListLabelsCalls = append(m.ListLabelsCalls, ListLabelsCall{
+		Owner: owner,
+		Repo:  repo,
+	})
+
+	if m.ListLabelsError != nil {
+		return nil, m.ListLabelsError
+	}
+
+	return m.ExistingLabels, nil
 }

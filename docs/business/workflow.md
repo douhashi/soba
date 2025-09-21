@@ -179,3 +179,28 @@ flowchart TB
 - 依存Issueが未完了
 - 手動介入が必要なラベル付き
 - エラーによる処理中断
+
+## 管理ラベル一覧
+
+sobaが自動的に管理するGitHubラベルの一覧です。これらのラベルは`soba init`コマンドの実行時に自動作成されます。
+
+| ラベル名 | カラー | 説明 | 使用フェーズ |
+|---------|-------|------|-------------|
+| `soba:todo` | ![#e1e4e8](https://via.placeholder.com/15/e1e4e8/000000?text=+) `#e1e4e8` | 新規Issue・処理待機中 | Todo |
+| `soba:queued` | ![#fbca04](https://via.placeholder.com/15/fbca04/000000?text=+) `#fbca04` | 実行キューに追加済み | Queue |
+| `soba:planning` | ![#d4c5f9](https://via.placeholder.com/15/d4c5f9/000000?text=+) `#d4c5f9` | Claude Codeによる実装計画作成中 | Plan |
+| `soba:ready` | ![#0e8a16](https://via.placeholder.com/15/0e8a16/000000?text=+) `#0e8a16` | 実装計画完了・実装準備完了 | Plan |
+| `soba:doing` | ![#1d76db](https://via.placeholder.com/15/1d76db/000000?text=+) `#1d76db` | Claude Codeによる実装作業中 | Implement |
+| `soba:review-requested` | ![#f9d71c](https://via.placeholder.com/15/f9d71c/000000?text=+) `#f9d71c` | PR作成済み・レビュー待機中 | Review |
+| `soba:reviewing` | ![#a2eeef](https://via.placeholder.com/15/a2eeef/000000?text=+) `#a2eeef` | Claude Codeによるレビュー中 | Review |
+| `soba:done` | ![#0e8a16](https://via.placeholder.com/15/0e8a16/000000?text=+) `#0e8a16` | レビュー承認済み・マージ準備完了 | Review |
+| `soba:requires-changes` | ![#d93f0b](https://via.placeholder.com/15/d93f0b/000000?text=+) `#d93f0b` | レビューで修正要求・修正待機中 | Revise |
+| `soba:revising` | ![#ff6347](https://via.placeholder.com/15/ff6347/000000?text=+) `#ff6347` | Claude Codeによる修正作業中 | Revise |
+| `soba:merged` | ![#6f42c1](https://via.placeholder.com/15/6f42c1/000000?text=+) `#6f42c1` | PR マージ済み・Issue完了 | Merge |
+
+### ラベル管理について
+
+- **自動作成**: `soba init`コマンド実行時に全ラベルが自動作成されます
+- **重複回避**: 既存ラベルは作成をスキップし、新しいラベルのみ作成されます
+- **一貫性**: カラーコードと説明文は実装に固定され、一貫性が保たれます
+- **手動管理禁止**: これらのラベルは soba により自動管理されるため、手動での変更は推奨されません
