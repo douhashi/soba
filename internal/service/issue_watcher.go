@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/pkg/logger"
 )
@@ -34,6 +35,7 @@ type IssueWatcher struct {
 	interval       time.Duration
 	logger         logger.Logger
 	previousIssues map[int64]github.Issue // Issue IDをキーとする前回の状態
+	phaseStrategy  domain.PhaseStrategy   // Phase管理戦略
 }
 
 // NewIssueWatcher は新しいIssueWatcherを作成する
@@ -52,12 +54,23 @@ func NewIssueWatcher(client GitHubClientInterface, cfg *config.Config) *IssueWat
 		interval:       time.Duration(cfg.Workflow.Interval) * time.Second,
 		logger:         log,
 		previousIssues: make(map[int64]github.Issue),
+		phaseStrategy:  nil, // デフォルトではPhaseStrategyは無効
 	}
 }
 
 // SetLogger はロガーを設定する（運用時用）
 func (w *IssueWatcher) SetLogger(log logger.Logger) {
 	w.logger = log
+}
+
+// EnablePhaseStrategy はPhaseStrategyを有効にする
+func (w *IssueWatcher) EnablePhaseStrategy() {
+	w.phaseStrategy = domain.NewDefaultPhaseStrategy()
+}
+
+// SetPhaseStrategy はPhaseStrategyを設定する
+func (w *IssueWatcher) SetPhaseStrategy(strategy domain.PhaseStrategy) {
+	w.phaseStrategy = strategy
 }
 
 // Start はIssue監視を開始する
@@ -99,6 +112,10 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 		w.logger.Info("Detected issue changes", "count", len(changes))
 		for _, change := range changes {
 			w.logChange(change)
+			// PhaseStrategyが有効な場合は、フェーズ分析を行う
+			if w.phaseStrategy != nil && change.Type == IssueChangeTypeLabelChanged {
+				w.analyzeAndLogPhaseTransition(change)
+			}
 		}
 	}
 
@@ -254,4 +271,105 @@ func (w *IssueWatcher) formatLabels(labels []github.Label) string {
 		labelNames = append(labelNames, label.Name)
 	}
 	return strings.Join(labelNames, ", ")
+}
+
+// analyzePhase はIssueの現在のフェーズを分析する
+func (w *IssueWatcher) analyzePhase(issue github.Issue) (string, string, error) {
+	if w.phaseStrategy == nil {
+		return "", "", fmt.Errorf("phase strategy is not enabled")
+	}
+
+	// ラベル名の配列を作成
+	labelNames := make([]string, 0, len(issue.Labels))
+	for _, label := range issue.Labels {
+		labelNames = append(labelNames, label.Name)
+	}
+
+	// 現在のフェーズを判定
+	phase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	if err != nil {
+		return "", "", err
+	}
+
+	// 次のラベルを取得
+	nextLabel, err := w.phaseStrategy.GetNextLabel(phase)
+	if err != nil {
+		// 次の遷移がない場合はエラーではなく空文字を返す
+		return string(phase), "", nil
+	}
+
+	return string(phase), nextLabel, nil
+}
+
+// isValidTransition は遷移が有効かチェックする
+func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
+	if w.phaseStrategy == nil || change.Previous == nil {
+		return true // PhaseStrategyが無効な場合は常に有効とする
+	}
+
+	// 前のフェーズを取得
+	prevLabelNames := make([]string, 0, len(change.Previous.Labels))
+	for _, label := range change.Previous.Labels {
+		prevLabelNames = append(prevLabelNames, label.Name)
+	}
+	prevPhase, err := w.phaseStrategy.GetCurrentPhase(prevLabelNames)
+	if err != nil {
+		w.logger.Debug("Failed to get previous phase", "error", err)
+		return true // エラーの場合は検証をスキップ
+	}
+
+	// 現在のフェーズを取得
+	currLabelNames := make([]string, 0, len(change.Issue.Labels))
+	for _, label := range change.Issue.Labels {
+		currLabelNames = append(currLabelNames, label.Name)
+	}
+	currPhase, err := w.phaseStrategy.GetCurrentPhase(currLabelNames)
+	if err != nil {
+		w.logger.Debug("Failed to get current phase", "error", err)
+		return true // エラーの場合は検証をスキップ
+	}
+
+	// 遷移の検証
+	err = w.phaseStrategy.ValidateTransition(prevPhase, currPhase)
+	return err == nil
+}
+
+// analyzeAndLogPhaseTransition はフェーズ遷移を分析してログ出力する
+func (w *IssueWatcher) analyzeAndLogPhaseTransition(change IssueChange) {
+	if change.Previous == nil {
+		return
+	}
+
+	// 前のフェーズを取得
+	prevLabelNames := make([]string, 0, len(change.Previous.Labels))
+	for _, label := range change.Previous.Labels {
+		prevLabelNames = append(prevLabelNames, label.Name)
+	}
+	prevPhase, _ := w.phaseStrategy.GetCurrentPhase(prevLabelNames)
+
+	// 現在のフェーズと次のラベルを取得
+	currentPhase, nextLabel, err := w.analyzePhase(change.Issue)
+	if err != nil {
+		w.logger.Debug("Failed to analyze phase", "error", err, "issue_number", change.Issue.Number)
+		return
+	}
+
+	// 遷移の検証
+	isValid := w.isValidTransition(change)
+
+	// ログ出力
+	if isValid {
+		w.logger.Info("Phase transition detected",
+			"issue_number", change.Issue.Number,
+			"from_phase", string(prevPhase),
+			"to_phase", currentPhase,
+			"next_label", nextLabel,
+		)
+	} else {
+		w.logger.Warn("Invalid phase transition detected",
+			"issue_number", change.Issue.Number,
+			"from_phase", string(prevPhase),
+			"to_phase", currentPhase,
+		)
+	}
 }
