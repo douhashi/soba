@@ -31,6 +31,8 @@ func TestIssueProcessor_Process_EmptyRepository(t *testing.T) {
 type MockGitHubClient struct {
 	listIssuesFunc   func(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
 	listIssuesCalled bool
+	addLabelFunc     func(ctx context.Context, owner, repo string, issueNumber int, label string) error
+	removeLabelFunc  func(ctx context.Context, owner, repo string, issueNumber int, label string) error
 }
 
 func (m *MockGitHubClient) ListOpenIssues(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error) {
@@ -39,4 +41,18 @@ func (m *MockGitHubClient) ListOpenIssues(ctx context.Context, owner, repo strin
 		return m.listIssuesFunc(ctx, owner, repo, options)
 	}
 	return []github.Issue{}, false, nil
+}
+
+func (m *MockGitHubClient) AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+	if m.addLabelFunc != nil {
+		return m.addLabelFunc(ctx, owner, repo, issueNumber, label)
+	}
+	return nil
+}
+
+func (m *MockGitHubClient) RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+	if m.removeLabelFunc != nil {
+		return m.removeLabelFunc(ctx, owner, repo, issueNumber, label)
+	}
+	return nil
 }

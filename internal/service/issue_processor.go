@@ -13,10 +13,14 @@ import (
 // GitHubClientInterface はGitHubクライアントのインターフェース
 type GitHubClientInterface interface {
 	ListOpenIssues(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
+	AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error
+	RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error
 }
 
 type issueProcessor struct {
 	githubClient GitHubClientInterface
+	owner        string
+	repo         string
 }
 
 // NewIssueProcessor creates a new issue processor
@@ -39,6 +43,8 @@ func (p *issueProcessor) Process(ctx context.Context, cfg *config.Config) error 
 		return errors.NewValidationError("invalid repository format: expected 'owner/repo'")
 	}
 	owner, repo := parts[0], parts[1]
+	p.owner = owner
+	p.repo = repo
 
 	// GitHubクライアントを初期化（まだ設定されていない場合）
 	if p.githubClient == nil {
@@ -76,6 +82,41 @@ func (p *issueProcessor) Process(ctx context.Context, cfg *config.Config) error 
 			"title", issue.Title,
 			"state", issue.State,
 		)
+	}
+
+	return nil
+}
+
+// UpdateLabels はIssueのラベルを更新する（削除→追加）
+func (p *issueProcessor) UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
+	log := logger.NewLogger(logger.GetLogger())
+
+	// GitHubクライアントが初期化されているか確認
+	if p.githubClient == nil {
+		return errors.NewInternalError("GitHub client not initialized")
+	}
+
+	// owner/repoが設定されているか確認
+	if p.owner == "" || p.repo == "" {
+		return errors.NewInternalError("repository info not set")
+	}
+
+	// 古いラベルを削除（存在しない場合はスキップ）
+	if removeLabel != "" {
+		if err := p.githubClient.RemoveLabelFromIssue(ctx, p.owner, p.repo, issueNumber, removeLabel); err != nil {
+			log.Error("Failed to remove label", "error", err, "issue", issueNumber, "label", removeLabel)
+			return errors.WrapInternal(err, "failed to remove label")
+		}
+		log.Debug("Removed label from issue", "issue", issueNumber, "label", removeLabel)
+	}
+
+	// 新しいラベルを追加
+	if addLabel != "" {
+		if err := p.githubClient.AddLabelToIssue(ctx, p.owner, p.repo, issueNumber, addLabel); err != nil {
+			log.Error("Failed to add label", "error", err, "issue", issueNumber, "label", addLabel)
+			return errors.WrapInternal(err, "failed to add label")
+		}
+		log.Debug("Added label to issue", "issue", issueNumber, "label", addLabel)
 	}
 
 	return nil

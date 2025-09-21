@@ -24,6 +24,7 @@ type DaemonService interface {
 // IssueProcessorInterface はIssue処理のインターフェース
 type IssueProcessorInterface interface {
 	Process(ctx context.Context, cfg *config.Config) error
+	UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error
 }
 
 type daemonService struct {

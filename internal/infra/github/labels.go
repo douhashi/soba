@@ -86,6 +86,67 @@ func (c *Client) ListLabels(ctx context.Context, owner, repo string) ([]Label, e
 	return labels, nil
 }
 
+// AddLabelToIssue はIssueにラベルを追加する
+func (c *Client) AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+	// リクエストボディの作成
+	labels := []string{label}
+	reqBody, err := json.Marshal(labels)
+	if err != nil {
+		return infra.WrapInfraError(err, "failed to marshal request body")
+	}
+
+	// HTTPリクエストの作成
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels", c.baseURL, owner, repo, issueNumber)
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return infra.WrapInfraError(err, "failed to create request")
+	}
+
+	// リクエスト実行
+	resp, err := c.doRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// レスポンスの処理
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.parseErrorResponse(resp)
+	}
+
+	return nil
+}
+
+// RemoveLabelFromIssue はIssueからラベルを削除する
+func (c *Client) RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+	// HTTPリクエストの作成
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels/%s", c.baseURL, owner, repo, issueNumber, label)
+	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
+	if err != nil {
+		return infra.WrapInfraError(err, "failed to create request")
+	}
+
+	// リクエスト実行
+	resp, err := c.doRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// レスポンスの処理
+	// ラベルが存在しない場合は404が返るが、それはエラーとしない
+	if resp.StatusCode == http.StatusNotFound {
+		c.logger.Debug("Label not found on issue", "owner", owner, "repo", repo, "issue", issueNumber, "label", label)
+		return nil
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.parseErrorResponse(resp)
+	}
+
+	return nil
+}
+
 // GetSobaLabels はsobaワークフローで使用するラベル定義を返す
 func GetSobaLabels() []CreateLabelRequest {
 	return []CreateLabelRequest{
