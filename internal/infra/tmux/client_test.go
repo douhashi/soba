@@ -31,19 +31,23 @@ func TestTmuxClient_CreateSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewClient()
-			sessionName := generateSessionName(tt.repository)
+			sessionName := "soba-test-" + tt.repository
 
 			if tt.wantErr {
 				if tt.repository == "" {
-					// 空の場合はセッション名生成でエラーが出る
+					// 空の場合はCreateSessionでエラーが出る
+					err := client.CreateSession("")
+					if err == nil {
+						t.Errorf("CreateSession() error = %v, wantErr %v", err, tt.wantErr)
+					}
 					return
 				}
 			} else {
 				// セッションが存在しない場合のみ作成
 				if !client.SessionExists(sessionName) {
-					err := client.CreateSession(sessionName)
-					if err != nil {
-						t.Errorf("CreateSession() error = %v, wantErr %v", err, tt.wantErr)
+					createErr := client.CreateSession(sessionName)
+					if createErr != nil {
+						t.Errorf("CreateSession() error = %v, wantErr %v", createErr, tt.wantErr)
 					}
 
 					// クリーンアップ
@@ -76,9 +80,9 @@ func TestTmuxClient_DeleteSession(t *testing.T) {
 
 	// テスト用セッションを作成してから削除
 	if !client.SessionExists(sessionName) {
-		err := client.CreateSession(sessionName)
-		if err != nil {
-			t.Fatalf("Failed to create test session: %v", err)
+		createErr := client.CreateSession(sessionName)
+		if createErr != nil {
+			t.Fatalf("Failed to create test session: %v", createErr)
 		}
 	}
 
@@ -215,8 +219,14 @@ func TestTmuxClient_DeletePane(t *testing.T) {
 		t.Fatalf("Failed to create test pane: %v", err)
 	}
 
-	// ペインを削除（インデックス1を削除）
-	err = client.DeletePane(sessionName, windowName, 1)
+	// 動的に最初のペインインデックスを取得して最後のペインを削除
+	firstPaneIndex, err := client.GetFirstPaneIndex(sessionName, windowName)
+	if err != nil {
+		t.Fatalf("Failed to get first pane index: %v", err)
+	}
+	// tmuxは最初のペインが0または1から始まることがあるので、最後のペインを削除
+	lastPaneIndex := firstPaneIndex + 1
+	err = client.DeletePane(sessionName, windowName, lastPaneIndex)
 	if err != nil {
 		t.Errorf("DeletePane() error = %v", err)
 	}
@@ -327,38 +337,7 @@ func TestTmuxClient_SendCommand(t *testing.T) {
 	}
 }
 
-func TestGenerateSessionName(t *testing.T) {
-	tests := []struct {
-		name       string
-		repository string
-		want       string
-	}{
-		{
-			name:       "通常のリポジトリ名",
-			repository: "owner/repo",
-			want:       "soba-owner-repo",
-		},
-		{
-			name:       "ドット含むリポジトリ名",
-			repository: "owner/repo.git",
-			want:       "soba-owner-repo-git",
-		},
-		{
-			name:       "ハイフン含むリポジトリ名",
-			repository: "owner/my-repo",
-			want:       "soba-owner-my-repo",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := generateSessionName(tt.repository)
-			if got != tt.want {
-				t.Errorf("generateSessionName() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
+// generateSessionName関数は削除されたため、このテストも削除
 
 func TestIsProtectedSession(t *testing.T) {
 	tests := []struct {

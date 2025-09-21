@@ -2,13 +2,15 @@ package tmux
 
 import "fmt"
 
-// TmuxError はtmux関連のエラーを表す
+// TmuxError はtmux操作時に発生するエラーを表すカスタムエラー型
+// 操作種別、メッセージ、元のエラーを含む
 type TmuxError struct {
 	Operation string
 	Message   string
 	Err       error
 }
 
+// Error はTmuxErrorを文字列として表現する（errorインターフェースの実装）
 func (e *TmuxError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("tmux %s error: %s: %v", e.Operation, e.Message, e.Err)
@@ -16,11 +18,12 @@ func (e *TmuxError) Error() string {
 	return fmt.Sprintf("tmux %s error: %s", e.Operation, e.Message)
 }
 
+// Unwrap はラップされた元のエラーを返す（Go 1.13+のerrors.Unwrap対応）
 func (e *TmuxError) Unwrap() error {
 	return e.Err
 }
 
-// NewTmuxError は新しいTmuxErrorを作成する
+// NewTmuxError は指定されたパラメータで新しいTmuxErrorインスタンスを作成する
 func NewTmuxError(operation, message string, err error) *TmuxError {
 	return &TmuxError{
 		Operation: operation,

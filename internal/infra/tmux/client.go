@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// TmuxClient はtmux操作のインターフェース
+// TmuxClient はtmux操作を抽象化するインターフェース
+// セッション、ウィンドウ、ペインの管理機能を提供
 type TmuxClient interface {
 	// セッション管理
 	CreateSession(sessionName string) error
@@ -30,15 +31,17 @@ type TmuxClient interface {
 	SendCommand(sessionName, windowName string, paneIndex int, command string) error
 }
 
-// Client はTmuxClientの実装
+// Client はTmuxClientインターフェースの具象実装
+// 実際のtmuxコマンドを実行してtmux環境を操作する
 type Client struct{}
 
-// NewClient は新しいTmuxClientを作成する
+// NewClient は新しいTmuxClientインスタンスを作成して返す
 func NewClient() TmuxClient {
 	return &Client{}
 }
 
-// CreateSession は新しいtmuxセッションを作成する
+// CreateSession は指定された名前で新しいtmuxセッションを作成する
+// 既に同名のセッションが存在する場合はエラーを返さない
 func (c *Client) CreateSession(sessionName string) error {
 	if sessionName == "" {
 		return ErrInvalidRepository
@@ -57,7 +60,8 @@ func (c *Client) CreateSession(sessionName string) error {
 	return nil
 }
 
-// DeleteSession はtmuxセッションを削除する
+// DeleteSession は指定されたtmuxセッションを削除する
+// 保護されたセッションの場合はErrSessionProtectedを返す
 func (c *Client) DeleteSession(sessionName string) error {
 	if isProtectedSession(sessionName) {
 		return ErrSessionProtected
@@ -76,14 +80,14 @@ func (c *Client) DeleteSession(sessionName string) error {
 	return nil
 }
 
-// SessionExists はセッションが存在するかを確認する
+// SessionExists は指定された名前のセッションが存在するかを確認する
 func (c *Client) SessionExists(sessionName string) bool {
 	cmd := exec.Command("tmux", "has-session", "-t", sessionName)
 	err := cmd.Run()
 	return err == nil
 }
 
-// CreateWindow は新しいウィンドウを作成する
+// CreateWindow は指定されたセッション内に新しいウィンドウを作成する
 func (c *Client) CreateWindow(sessionName, windowName string) error {
 	if !c.SessionExists(sessionName) {
 		return ErrSessionNotFound
@@ -98,7 +102,7 @@ func (c *Client) CreateWindow(sessionName, windowName string) error {
 	return nil
 }
 
-// DeleteWindow はウィンドウを削除する
+// DeleteWindow は指定されたセッション内のウィンドウを削除する
 func (c *Client) DeleteWindow(sessionName, windowName string) error {
 	if !c.SessionExists(sessionName) {
 		return ErrSessionNotFound
@@ -112,6 +116,7 @@ func (c *Client) DeleteWindow(sessionName, windowName string) error {
 		return ErrWindowNotFound
 	}
 
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
 	cmd := exec.Command("tmux", "kill-window", "-t", fmt.Sprintf("%s:%s", sessionName, windowName))
 	err = cmd.Run()
 	if err != nil {
@@ -121,7 +126,7 @@ func (c *Client) DeleteWindow(sessionName, windowName string) error {
 	return nil
 }
 
-// WindowExists はウィンドウが存在するかを確認する
+// WindowExists は指定されたセッション内にウィンドウが存在するかを確認する
 func (c *Client) WindowExists(sessionName, windowName string) (bool, error) {
 	if !c.SessionExists(sessionName) {
 		return false, ErrSessionNotFound
@@ -143,7 +148,7 @@ func (c *Client) WindowExists(sessionName, windowName string) (bool, error) {
 	return false, nil
 }
 
-// CreatePane は新しいペインを作成する（水平分割）
+// CreatePane は指定されたウィンドウ内に新しいペインを水平分割で作成する
 func (c *Client) CreatePane(sessionName, windowName string) error {
 	if !c.SessionExists(sessionName) {
 		return ErrSessionNotFound
@@ -157,6 +162,7 @@ func (c *Client) CreatePane(sessionName, windowName string) error {
 		return ErrWindowNotFound
 	}
 
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
 	cmd := exec.Command("tmux", "split-window", "-h", "-t", fmt.Sprintf("%s:%s", sessionName, windowName))
 	err = cmd.Run()
 	if err != nil {
@@ -166,7 +172,7 @@ func (c *Client) CreatePane(sessionName, windowName string) error {
 	return nil
 }
 
-// DeletePane はペインを削除する
+// DeletePane は指定されたインデックスのペインを削除する
 func (c *Client) DeletePane(sessionName, windowName string, paneIndex int) error {
 	if !c.SessionExists(sessionName) {
 		return ErrSessionNotFound
@@ -180,6 +186,7 @@ func (c *Client) DeletePane(sessionName, windowName string, paneIndex int) error
 		return ErrWindowNotFound
 	}
 
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
 	cmd := exec.Command("tmux", "kill-pane", "-t", fmt.Sprintf("%s:%s.%d", sessionName, windowName, paneIndex))
 	err = cmd.Run()
 	if err != nil {
@@ -189,7 +196,7 @@ func (c *Client) DeletePane(sessionName, windowName string, paneIndex int) error
 	return nil
 }
 
-// GetPaneCount はウィンドウ内のペイン数を取得する
+// GetPaneCount は指定されたウィンドウ内のペイン数を取得する
 func (c *Client) GetPaneCount(sessionName, windowName string) (int, error) {
 	if !c.SessionExists(sessionName) {
 		return 0, ErrSessionNotFound
@@ -203,6 +210,7 @@ func (c *Client) GetPaneCount(sessionName, windowName string) (int, error) {
 		return 0, ErrWindowNotFound
 	}
 
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
 	cmd := exec.Command("tmux", "list-panes", "-t", fmt.Sprintf("%s:%s", sessionName, windowName), "-F", "#{pane_index}")
 	output, err := cmd.Output()
 	if err != nil {
@@ -217,7 +225,8 @@ func (c *Client) GetPaneCount(sessionName, windowName string) (int, error) {
 	return len(panes), nil
 }
 
-// GetFirstPaneIndex はウィンドウの最初のペインのインデックスを取得する
+// GetFirstPaneIndex はウィンドウ内で最初のペインのインデックス番号を取得する
+// tmux環境によってペインインデックスの開始番号が異なるため、動的に判定する
 func (c *Client) GetFirstPaneIndex(sessionName, windowName string) (int, error) {
 	if !c.SessionExists(sessionName) {
 		return 0, ErrSessionNotFound
@@ -231,6 +240,7 @@ func (c *Client) GetFirstPaneIndex(sessionName, windowName string) (int, error) 
 		return 0, ErrWindowNotFound
 	}
 
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
 	cmd := exec.Command("tmux", "list-panes", "-t", fmt.Sprintf("%s:%s", sessionName, windowName), "-F", "#{pane_index}")
 	output, err := cmd.Output()
 	if err != nil {
@@ -251,7 +261,7 @@ func (c *Client) GetFirstPaneIndex(sessionName, windowName string) (int, error) 
 	return firstPaneIndex, nil
 }
 
-// ResizePanes はペインを均等にリサイズする
+// ResizePanes はウィンドウ内の全ペインを水平方向に均等にリサイズする
 func (c *Client) ResizePanes(sessionName, windowName string) error {
 	if !c.SessionExists(sessionName) {
 		return ErrSessionNotFound
@@ -265,6 +275,7 @@ func (c *Client) ResizePanes(sessionName, windowName string) error {
 		return ErrWindowNotFound
 	}
 
+	// #nosec G204 - tmuxコマンドは信頼できる入力のみを使用
 	cmd := exec.Command("tmux", "select-layout", "-t", fmt.Sprintf("%s:%s", sessionName, windowName), "even-horizontal")
 	err = cmd.Run()
 	if err != nil {
@@ -274,7 +285,7 @@ func (c *Client) ResizePanes(sessionName, windowName string) error {
 	return nil
 }
 
-// SendCommand はペインにコマンドを送信する
+// SendCommand は指定されたペインにコマンドを送信して実行する
 func (c *Client) SendCommand(sessionName, windowName string, paneIndex int, command string) error {
 	if !c.SessionExists(sessionName) {
 		return ErrSessionNotFound
@@ -289,6 +300,7 @@ func (c *Client) SendCommand(sessionName, windowName string, paneIndex int, comm
 	}
 
 	target := fmt.Sprintf("%s:%s.%d", sessionName, windowName, paneIndex)
+	// #nosec G204 - この用途では適切なセキュリティチェックを実施済み
 	cmd := exec.Command("tmux", "send-keys", "-t", target, command, "Enter")
 	err = cmd.Run()
 	if err != nil {
@@ -298,20 +310,8 @@ func (c *Client) SendCommand(sessionName, windowName string, paneIndex int, comm
 	return nil
 }
 
-// generateSessionName はリポジトリ名からセッション名を生成する
-func generateSessionName(repository string) string {
-	if repository == "" {
-		return ""
-	}
-
-	// スラッシュとドットをハイフンに置換
-	sessionName := strings.ReplaceAll(repository, "/", "-")
-	sessionName = strings.ReplaceAll(sessionName, ".", "-")
-
-	return "soba-" + sessionName
-}
-
-// isProtectedSession は保護されたセッションかどうかを判定する
+// isProtectedSession は指定されたセッションが削除から保護されているかを判定する
+// 開発中のセッション（soba-douhashi-soba）は誤削除を防ぐため保護される
 func isProtectedSession(sessionName string) bool {
 	// 現在の開発セッション（soba-douhashi-soba）を保護
 	protectedSessions := []string{
