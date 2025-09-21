@@ -45,11 +45,12 @@ github:
 
 ### ワークフロー起動
 ```bash
-# デーモンとして起動
+# フォアグラウンドで起動（デフォルト）
 soba start
 
-# フォアグラウンドで起動
-soba start --foreground
+# デーモンとして起動
+soba start -d
+soba start --daemon
 
 # デバッグモード
 soba start --verbose
@@ -114,7 +115,7 @@ gh issue edit 123 --add-label "soba:todo"
 ### 1. 継続的開発
 ```bash
 # デーモン起動
-soba start
+soba start --daemon
 
 # Issueを順次作成・ラベル付与
 # → 自動的に処理される
