@@ -6,9 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/douhashi/soba/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/internal/config"
 )
 
 func TestInitCommand(t *testing.T) {
@@ -20,14 +21,14 @@ func TestInitCommand(t *testing.T) {
 		require.NoError(t, os.Chdir(tempDir))
 
 		// Execute
-		rootCmd := newRootCmd()
-		rootCmd.SetArgs([]string{"init"})
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
 
 		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
 
-		err := rootCmd.Execute()
+		err := cmd.Execute()
 
 		// Assert
 		assert.NoError(t, err)
@@ -59,14 +60,14 @@ func TestInitCommand(t *testing.T) {
 		require.NoError(t, os.WriteFile(configPath, existingContent, 0644))
 
 		// Execute
-		rootCmd := newRootCmd()
-		rootCmd.SetArgs([]string{"init"})
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
 
 		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
 
-		err := rootCmd.Execute()
+		err := cmd.Execute()
 
 		// Assert - should return error and not overwrite
 		assert.Error(t, err)
@@ -96,14 +97,14 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chmod(sobaDir, 0755) // Restore permission for cleanup
 
 		// Execute
-		rootCmd := newRootCmd()
-		rootCmd.SetArgs([]string{"init"})
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
 
 		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
 
-		err := rootCmd.Execute()
+		err := cmd.Execute()
 
 		// Assert
 		assert.Error(t, err)
@@ -118,14 +119,14 @@ func TestInitCommand(t *testing.T) {
 		require.NoError(t, os.Chdir(tempDir))
 
 		// Execute init command
-		rootCmd := newRootCmd()
-		rootCmd.SetArgs([]string{"init"})
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
 
 		var buf bytes.Buffer
-		rootCmd.SetOut(&buf)
-		rootCmd.SetErr(&buf)
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
 
-		err := rootCmd.Execute()
+		err := cmd.Execute()
 		require.NoError(t, err)
 
 		// Try to load the created config

@@ -5,8 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/douhashi/soba/internal/config"
 	"github.com/spf13/cobra"
+
+	"github.com/douhashi/soba/internal/config"
 )
 
 func newInitCmd() *cobra.Command {
