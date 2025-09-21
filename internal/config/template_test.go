@@ -42,7 +42,7 @@ func TestGenerateTemplate(t *testing.T) {
 		assert.Contains(t, template, "closed_issue_cleanup_interval: 300")
 		assert.Contains(t, template, "tmux_command_delay: 3")
 		assert.Contains(t, template, "notifications_enabled: false")
-		assert.Contains(t, template, "setup_workspace: true")
+		assert.NotContains(t, template, "setup_workspace")
 		assert.Contains(t, template, "worktree_base_path: .git/soba/worktrees")
 	})
 
@@ -102,7 +102,6 @@ func TestGenerateTemplate(t *testing.T) {
 		assert.Equal(t, 300, config.Workflow.ClosedIssueCleanupInterval)
 		assert.Equal(t, 3, config.Workflow.TmuxCommandDelay)
 		assert.False(t, config.Slack.NotificationsEnabled)
-		assert.True(t, config.Git.SetupWorkspace)
 		assert.Equal(t, ".git/soba/worktrees", config.Git.WorktreeBasePath)
 
 		// Verify phase commands

@@ -166,7 +166,6 @@ func TestInitCommand(t *testing.T) {
 		assert.Equal(t, 20, loadedConfig.Workflow.Interval)
 		assert.True(t, loadedConfig.Workflow.UseTmux)
 		assert.Equal(t, ".git/soba/worktrees", loadedConfig.Git.WorktreeBasePath)
-		assert.True(t, loadedConfig.Git.SetupWorkspace)
 	})
 
 	t.Run("should create GitHub labels when config has repository info", func(t *testing.T) {
