@@ -147,13 +147,21 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 		return err
 	}
 
+	// watchers設定と起動（共通処理を使用）
+	return d.configureAndStartWatchers(ctx, cfg, log)
+}
+
+// configureAndStartWatchers はwatchersの設定と起動を行う共通処理
+func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *config.Config, log logger.Logger) error {
 	// IssueWatcherに設定を反映
-	d.watcher.config = cfg
-	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-	d.watcher.SetLogger(log)
+	if d.watcher != nil {
+		d.watcher.config = cfg
+		d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
+		d.watcher.SetLogger(log)
+	}
 
 	// QueueManagerにowner/repoを設定
-	if d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
+	if d.watcher != nil && d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
 		parts := strings.Split(cfg.GitHub.Repository, "/")
 		if len(parts) == 2 {
 			d.watcher.queueManager.owner = parts[0]
@@ -179,8 +187,6 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 				parts[0], parts[1], sessionName,
 				cfg.Workflow.ClosedIssueCleanupEnabled, interval,
 			)
-			// TODO: logger.Loggerから*zap.SugaredLoggerへの変換
-			// d.closedIssueCleanupService.SetLogger(log)
 		}
 	}
 
@@ -192,7 +198,7 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 		if d.watcher != nil {
 			errCh <- d.watcher.Start(ctx)
 		} else {
-			errCh <- nil // 無効化された場合はnilを送信
+			errCh <- nil
 		}
 	}()
 
@@ -250,80 +256,8 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 
 	log.Info("Daemon started successfully")
 
-	// フォアグラウンドモードと同じ処理を実行（セッション初期化は既に完了）
-	// 実際のデーモン化はここでは簡略化（本来はfork等が必要）
-	// StartForegroundを呼ばずに直接watcherを起動
-	// IssueWatcherに設定を反映
-	d.watcher.config = cfg
-	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-	d.watcher.SetLogger(log)
-
-	// QueueManagerにowner/repoを設定
-	if d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
-		parts := strings.Split(cfg.GitHub.Repository, "/")
-		if len(parts) == 2 {
-			d.watcher.queueManager.owner = parts[0]
-			d.watcher.queueManager.repo = parts[1]
-			d.watcher.queueManager.SetLogger(log)
-		}
-	}
-
-	// PRWatcherに設定を反映
-	if d.prWatcher != nil {
-		d.prWatcher.config = cfg
-		d.prWatcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-		d.prWatcher.SetLogger(log)
-	}
-
-	// ClosedIssueCleanupServiceを設定
-	if cfg.GitHub.Repository != "" {
-		parts := strings.Split(cfg.GitHub.Repository, "/")
-		if len(parts) == 2 {
-			sessionName := fmt.Sprintf("soba-%s", parts[1])
-			interval := time.Duration(cfg.Workflow.ClosedIssueCleanupInterval) * time.Second
-			d.closedIssueCleanupService.Configure(
-				parts[0], parts[1], sessionName,
-				cfg.Workflow.ClosedIssueCleanupEnabled, interval,
-			)
-			// TODO: logger.Loggerから*zap.SugaredLoggerへの変換
-			// d.closedIssueCleanupService.SetLogger(log)
-		}
-	}
-
-	// IssueWatcher、PRWatcher、ClosedIssueCleanupServiceを並行して起動
-	errCh := make(chan error, 3)
-
-	// IssueWatcherを起動
-	go func() {
-		if d.watcher != nil {
-			errCh <- d.watcher.Start(ctx)
-		} else {
-			errCh <- nil // 無効化された場合はnilを送信
-		}
-	}()
-
-	// PRWatcherを起動
-	go func() {
-		if d.prWatcher != nil {
-			errCh <- d.prWatcher.Start(ctx)
-		} else {
-			errCh <- nil
-		}
-	}()
-
-	// ClosedIssueCleanupServiceを起動
-	go func() {
-		errCh <- d.closedIssueCleanupService.Start(ctx)
-	}()
-
-	// どれかがエラーで終了したら全体を終了
-	for i := 0; i < 3; i++ {
-		if err := <-errCh; err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// watchers設定と起動（共通処理を使用）
+	return d.configureAndStartWatchers(ctx, cfg, log)
 }
 
 // IsRunning checks if daemon is currently running
