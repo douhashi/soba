@@ -30,13 +30,15 @@ type IssueChange struct {
 
 // IssueWatcher はIssue監視機能を提供する
 type IssueWatcher struct {
-	client         GitHubClientInterface
-	config         *config.Config
-	interval       time.Duration
-	logger         logger.Logger
-	previousIssues map[int64]github.Issue  // Issue IDをキーとする前回の状態
-	processor      IssueProcessorInterface // Issue処理用のプロセッサ
-	currentIssue   *int                    // 現在処理中のIssue番号（シングルライン処理用）
+	client           GitHubClientInterface
+	config           *config.Config
+	interval         time.Duration
+	logger           logger.Logger
+	previousIssues   map[int64]github.Issue  // Issue IDをキーとする前回の状態
+	processor        IssueProcessorInterface // Issue処理用のプロセッサ
+	currentIssue     *int                    // 現在処理中のIssue番号（シングルライン処理用）
+	queueManager     *QueueManager           // キュー管理用マネージャー
+	workflowExecutor WorkflowExecutor        // ワークフロー実行用エグゼキューター
 }
 
 // NewIssueWatcher は新しいIssueWatcherを作成する
@@ -66,6 +68,16 @@ func (w *IssueWatcher) SetLogger(log logger.Logger) {
 // SetProcessor はIssueProcessorを設定する
 func (w *IssueWatcher) SetProcessor(processor IssueProcessorInterface) {
 	w.processor = processor
+}
+
+// SetQueueManager はQueueManagerを設定する
+func (w *IssueWatcher) SetQueueManager(qm *QueueManager) {
+	w.queueManager = qm
+}
+
+// SetWorkflowExecutor はWorkflowExecutorを設定する
+func (w *IssueWatcher) SetWorkflowExecutor(executor WorkflowExecutor) {
+	w.workflowExecutor = executor
 }
 
 // Start はIssue監視を開始する
@@ -102,7 +114,17 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 		return err
 	}
 
-	// シングルライン処理: 処理可能なIssueを選択
+	// 1. キュー管理（soba:todo → soba:queued）
+	if w.queueManager != nil {
+		if err := w.queueManager.EnqueueNextIssue(ctx, issues); err != nil {
+			w.logger.Error("Failed to enqueue", "error", err)
+		}
+	}
+
+	// 2. キューに入ったIssueの処理（soba:queued → plan実行）
+	w.processQueuedIssues(ctx, issues)
+
+	// 3. その他のワークフロー処理
 	issueToProcess := w.selectIssueForProcessing(issues)
 
 	// 変更を検知してログ出力
@@ -113,7 +135,7 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 		w.logger.Error("Failed to process selected issue", "error", err)
 	}
 
-	// 自動フェーズ遷移を処理
+	// 自動フェーズ遷移を処理（queue以外）
 	w.handleAutoTransitions(ctx, issues)
 
 	return nil
@@ -142,11 +164,8 @@ func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess 
 		return nil
 	}
 
-	// 処理可能なフェーズを持つ場合のみ実際に処理
-	if !w.hasProcessablePhase(*issueToProcess) {
-		w.logger.Debug("Issue does not have processable phase", "issue", issueToProcess.Number)
-		return nil
-	}
+	// selectIssueForProcessingが選択したIssueは処理可能として扱う
+	// （selectIssueForProcessingが既に適切なフィルタリングを行っているため）
 
 	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number)
 	if err := w.processor.ProcessIssue(ctx, w.config, *issueToProcess); err != nil {
@@ -155,6 +174,27 @@ func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess 
 	}
 
 	return nil
+}
+
+// processQueuedIssues はキューに入ったIssueを処理する
+func (w *IssueWatcher) processQueuedIssues(ctx context.Context, issues []github.Issue) {
+	if w.workflowExecutor == nil {
+		return
+	}
+
+	for _, issue := range issues {
+		// soba:queuedラベルがあれば即座にplanフェーズを実行
+		if w.hasLabel(issue, domain.LabelQueued) {
+			w.logger.Info("Processing queued issue", "issue", issue.Number)
+
+			// 明示的にplanフェーズを実行
+			err := w.workflowExecutor.ExecutePhase(ctx, w.config, issue.Number, domain.PhasePlan)
+			if err != nil {
+				w.logger.Error("Failed to execute plan phase", "error", err, "issue", issue.Number)
+			}
+			break // シングルライン処理のため1つだけ処理
+		}
+	}
 }
 
 // handleAutoTransitions は自動フェーズ遷移を処理する
@@ -466,6 +506,16 @@ func (w *IssueWatcher) checkCurrentIssue(issues []github.Issue) bool {
 func (w *IssueWatcher) collectProcessableIssues(issues []github.Issue) []github.Issue {
 	var processableIssues []github.Issue
 	for _, issue := range issues {
+		// soba:queuedはprocessQueuedIssuesで処理されるので除外
+		if w.hasLabel(issue, domain.LabelQueued) {
+			continue
+		}
+
+		// QueueManagerが設定されている場合、soba:todoはQueueManagerで処理されるので除外
+		if w.queueManager != nil && w.hasLabel(issue, "soba:todo") {
+			continue
+		}
+
 		hasTodoLabel := w.hasLabel(issue, "soba:todo")
 		hasProcessable := w.hasProcessablePhase(issue)
 		w.logger.Debug("Checking issue for processing", "issue", issue.Number, "hasTodo", hasTodoLabel, "hasProcessable", hasProcessable)
@@ -534,9 +584,9 @@ func (w *IssueWatcher) hasProcessablePhase(issue github.Issue) bool {
 		return false
 	}
 
-	// 処理可能なフェーズかチェック（コマンドが定義されているフェーズまたはQueue）
+	// 処理可能なフェーズかチェック（Queueは除外 - 別途processQueuedIssuesで処理）
 	switch phase {
-	case domain.PhaseQueue, domain.PhasePlan, domain.PhaseImplement, domain.PhaseReview, domain.PhaseRevise:
+	case domain.PhasePlan, domain.PhaseImplement, domain.PhaseReview, domain.PhaseRevise:
 		return true
 	default:
 		return false
@@ -566,27 +616,9 @@ func (w *IssueWatcher) isIssueCompleted(issue github.Issue) bool {
 
 // shouldAutoTransition は自動遷移が必要かチェックする
 func (w *IssueWatcher) shouldAutoTransition(issue github.Issue) bool {
-	// 現在のフェーズを取得
-	labelNames := make([]string, 0, len(issue.Labels))
-	for _, label := range issue.Labels {
-		labelNames = append(labelNames, label.Name)
-	}
-
-	currentPhase, err := domain.GetCurrentPhaseFromLabels(labelNames)
-	if err != nil {
-		w.logger.Debug("Could not determine current phase for auto-transition", "labels", labelNames, "error", err)
-		return false
-	}
-
-	// フェーズ定義を取得
-	phaseDef := domain.PhaseDefinitions[string(currentPhase)]
-	if phaseDef == nil {
-		w.logger.Debug("No phase definition found for phase", "phase", currentPhase)
-		return false
-	}
-
-	// queueフェーズの場合のみ自動遷移（既存の仕様を維持）
-	return currentPhase == domain.PhaseQueue
+	// 現在のアーキテクチャではqueueフェーズの自動遷移は
+	// processQueuedIssuesで処理されるため、常にfalseを返す
+	return false
 }
 
 // analyzeAndLogPhaseTransition はフェーズ遷移を分析してログ出力する

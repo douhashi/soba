@@ -100,9 +100,9 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	// WorkflowExecutorとIssueProcessorを初期化
 	mockProcessorUpdater := new(MockIssueProcessorUpdater)
 	// Configure呼び出し（複数回呼ばれる可能性がある）
-	mockProcessorUpdater.On("Configure", mock.Anything).Return(nil)
+	mockProcessorUpdater.On("Configure", mock.Anything).Return(nil).Maybe()
 	// Queueフェーズでラベル更新（自動遷移で複数回呼ばれる可能性がある）
-	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:todo", "soba:queued").Return(nil)
+	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:todo", "soba:queued").Return(nil).Maybe()
 	// 自動遷移でplanフェーズも実行される場合
 	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:queued", "soba:planning").Return(nil).Maybe()
 
@@ -169,7 +169,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	mockTmux.On("ResizePanes", "soba", "issue-1").Return(nil).Maybe()
 
 	// ラベル更新のモック（複数回呼ばれる可能性がある）
-	mockProcessor.On("Configure", mock.Anything).Return(nil)
+	mockProcessor.On("Configure", mock.Anything).Return(nil).Maybe()
 	mockProcessor.On("UpdateLabels", mock.Anything, 1, "soba:todo", "soba:queued").Return(nil).Maybe()
 	// 自動遷移でplanフェーズも実行される場合
 	mockProcessor.On("UpdateLabels", mock.Anything, 1, "soba:queued", "soba:planning").Return(nil).Maybe()

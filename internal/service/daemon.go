@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -73,10 +74,15 @@ func NewDaemonService() DaemonService {
 	// ProcessorにExecutorを設定（循環依存を解決）
 	processorWithDeps := NewIssueProcessor(githubClient, executor)
 
+	// QueueManagerを初期化（owner/repoは後で設定）
+	queueManager := NewQueueManager(githubClient, "", "")
+
 	// IssueWatcherを初期化
 	// 注: configは後でStartForeground/StartDaemonで設定される
 	watcher := NewIssueWatcher(githubClient, &config.Config{})
 	watcher.SetProcessor(processorWithDeps)
+	watcher.SetQueueManager(queueManager)
+	watcher.SetWorkflowExecutor(executor)
 
 	return &daemonService{
 		workDir:   workDir,
@@ -94,6 +100,16 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 	d.watcher.config = cfg
 	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
 	d.watcher.SetLogger(log)
+
+	// QueueManagerにowner/repoを設定
+	if d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
+		parts := strings.Split(cfg.GitHub.Repository, "/")
+		if len(parts) == 2 {
+			d.watcher.queueManager.owner = parts[0]
+			d.watcher.queueManager.repo = parts[1]
+			d.watcher.queueManager.SetLogger(log)
+		}
+	}
 
 	// IssueWatcherを起動
 	return d.watcher.Start(ctx)
