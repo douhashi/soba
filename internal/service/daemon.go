@@ -13,6 +13,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
+	"github.com/douhashi/soba/internal/service/builder"
 	"github.com/douhashi/soba/pkg/errors"
 	"github.com/douhashi/soba/pkg/logger"
 )
@@ -41,55 +42,49 @@ type daemonService struct {
 	tmux                      tmux.TmuxClient
 }
 
-// NewDaemonService creates a new daemon service
+// init initializes the service factory
+func init() {
+	builder.SetServiceFactory(&DefaultServiceFactory{})
+}
+
+// NewDaemonService creates a new daemon service using ServiceBuilder
 func NewDaemonService() DaemonService {
-	workDir, _ := os.Getwd()
-
-	// 依存関係を初期化
-	tokenProvider := github.NewDefaultTokenProvider()
-	githubClient, _ := github.NewClient(tokenProvider, &github.ClientOptions{})
-	tmuxClient := tmux.NewClient()
-
-	// デフォルト設定でwatcherを初期化
-	defaultCfg := &config.Config{
-		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
-			BaseBranch:       "main",
-		},
-		Workflow: config.WorkflowConfig{
-			Interval: 20, // デフォルト20秒
-		},
+	serviceBuilder := builder.NewServiceBuilder()
+	service, err := serviceBuilder.Build()
+	if err != nil {
+		log := logger.GetLogger()
+		log.Error("Failed to create daemon service", "error", err)
+		// Return minimal fallback service
+		return createFallbackService()
 	}
+	return service
+}
 
-	// watcherを初期化（GitHubClientInterfaceを正しく実装）
-	watcher := NewIssueWatcher(githubClient, defaultCfg)
-	prWatcher := NewPRWatcher(githubClient, defaultCfg)
-
-	// QueueManagerを初期化
-	queueManager := NewQueueManager(githubClient, "", "")
-	watcher.SetQueueManager(queueManager)
-
-	// IssueProcessorを初期化（一時的にnilで作成）
-	var processor IssueProcessorInterface = nil
-
-	// ClosedIssueCleanupServiceを初期化（設定は後で更新）
-	closedIssueCleanupService := NewClosedIssueCleanupService(
-		githubClient,
-		tmuxClient,
-		"",            // owner は後で設定
-		"",            // repo は後で設定
-		"",            // sessionName は後で設定
-		false,         // 設定は後で更新
-		5*time.Minute, // デフォルトインターバル
-	)
-
+// NewDaemonServiceWithDependencies creates daemon service with injected dependencies
+func NewDaemonServiceWithDependencies(
+	workDir string,
+	processor IssueProcessorInterface,
+	watcher *IssueWatcher,
+	prWatcher *PRWatcher,
+	cleanupService *ClosedIssueCleanupService,
+	tmuxClient tmux.TmuxClient,
+) DaemonService {
 	return &daemonService{
 		workDir:                   workDir,
 		processor:                 processor,
 		watcher:                   watcher,
 		prWatcher:                 prWatcher,
-		closedIssueCleanupService: closedIssueCleanupService,
+		closedIssueCleanupService: cleanupService,
 		tmux:                      tmuxClient,
+	}
+}
+
+// createFallbackService creates minimal working service for emergency fallback
+func createFallbackService() DaemonService {
+	workDir, _ := os.Getwd()
+	return &daemonService{
+		workDir: workDir,
+		// All services initialized as nil - configureAndStartWatchers handles nil checks
 	}
 }
 
