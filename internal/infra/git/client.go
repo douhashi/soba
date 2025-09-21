@@ -149,6 +149,15 @@ func (c *Client) WorktreeExists(worktreePath string) bool {
 			path := strings.TrimPrefix(line, "worktree ")
 			absPath, _ := filepath.Abs(path)
 			inputPath, _ := filepath.Abs(worktreePath)
+
+			// Resolve symlinks for accurate path comparison (macOS compatibility)
+			if resolvedAbsPath, err := filepath.EvalSymlinks(absPath); err == nil {
+				absPath = resolvedAbsPath
+			}
+			if resolvedInputPath, err := filepath.EvalSymlinks(inputPath); err == nil {
+				inputPath = resolvedInputPath
+			}
+
 			if absPath == inputPath {
 				return true
 			}

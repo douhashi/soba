@@ -56,7 +56,12 @@ func NewDaemonService() DaemonService {
 	tmuxClient := tmux.NewClient()
 
 	// Git クライアントとワークスペースマネージャーを初期化
-	gitClient, _ := git.NewClient(workDir)
+	gitClient, err := git.NewClient(workDir)
+	if err != nil {
+		log := logger.GetLogger()
+		log.Error("Failed to initialize git client", "error", err)
+		return nil
+	}
 	workspace := NewGitWorkspaceManager(defaultCfg, gitClient)
 
 	processor := NewIssueProcessor() // 一時的に既存のコンストラクタを使用
