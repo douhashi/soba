@@ -23,6 +23,7 @@ type DaemonService interface {
 	StartForeground(ctx context.Context, cfg *config.Config) error
 	StartDaemon(ctx context.Context, cfg *config.Config) error
 	IsRunning() bool
+	Stop(ctx context.Context, repository string) error
 }
 
 // IssueProcessorInterface はIssue処理のインターフェース
@@ -301,5 +302,87 @@ func (d *daemonService) removePIDFile() error {
 	if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
 		return errors.WrapInternal(err, "failed to remove PID file")
 	}
+	return nil
+}
+
+// Stop stops the running daemon process
+func (d *daemonService) Stop(ctx context.Context, repository string) error {
+	log := logger.NewLogger(logger.GetLogger())
+	pidFile := filepath.Join(d.workDir, ".soba", "soba.pid")
+
+	// PIDファイルが存在しない場合はデーモンが実行されていない
+	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+		log.Warn("Daemon is not running (PID file not found)")
+		return errors.NewNotFoundError("daemon is not running")
+	}
+
+	// PIDファイルを読み込み
+	content, err := os.ReadFile(pidFile)
+	if err != nil {
+		log.Error("Failed to read PID file", "error", err)
+		return errors.WrapInternal(err, "failed to read PID file")
+	}
+
+	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
+	if err != nil {
+		log.Error("Invalid PID in file", "content", string(content))
+		return errors.NewValidationError("invalid PID in file")
+	}
+
+	// プロセスが存在するかチェック
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		log.Error("Process not found", "pid", pid, "error", err)
+		return errors.NewNotFoundError("process not found")
+	}
+
+	// プロセスが実際に実行中かチェック（Unix系OSの場合）
+	if err := process.Signal(syscall.Signal(0)); err != nil {
+		log.Warn("Process is not running", "pid", pid)
+		// PIDファイルを削除してエラーを返す
+		d.removePIDFile()
+		return errors.NewNotFoundError("process not found")
+	}
+
+	log.Info("Stopping daemon process", "pid", pid)
+
+	// まずSIGTERMを送信してグレースフルシャットダウンを試みる
+	if err := process.Signal(syscall.SIGTERM); err != nil {
+		log.Warn("Failed to send SIGTERM", "pid", pid, "error", err)
+	} else {
+		// プロセスが終了するまで最大10秒待つ
+		for i := 0; i < 100; i++ {
+			time.Sleep(100 * time.Millisecond)
+			if err := process.Signal(syscall.Signal(0)); err != nil {
+				// プロセスが終了した
+				log.Info("Daemon process stopped gracefully", "pid", pid)
+				break
+			}
+			if i == 99 {
+				// タイムアウト - SIGKILLを送信
+				log.Warn("Process did not stop gracefully, sending SIGKILL", "pid", pid)
+				if err := process.Signal(syscall.SIGKILL); err != nil {
+					log.Error("Failed to kill process", "pid", pid, "error", err)
+				}
+			}
+		}
+	}
+
+	// tmuxセッションのクリーンアップ
+	sessionName := d.generateSessionName(repository)
+	if d.tmux != nil && d.tmux.SessionExists(sessionName) {
+		log.Info("Cleaning up tmux session", "session", sessionName)
+		if err := d.tmux.KillSession(sessionName); err != nil {
+			// tmuxエラーは警告として扱い、停止処理は継続
+			log.Warn("Failed to kill tmux session", "session", sessionName, "error", err)
+		}
+	}
+
+	// PIDファイルを削除
+	if err := d.removePIDFile(); err != nil {
+		log.Warn("Failed to remove PID file", "error", err)
+	}
+
+	log.Info("Daemon stopped successfully")
 	return nil
 }

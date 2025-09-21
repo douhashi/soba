@@ -14,6 +14,7 @@ type TmuxClient interface {
 	// セッション管理
 	CreateSession(sessionName string) error
 	DeleteSession(sessionName string) error
+	KillSession(sessionName string) error
 	SessionExists(sessionName string) bool
 
 	// ウィンドウ管理
@@ -77,6 +78,22 @@ func (c *Client) DeleteSession(sessionName string) error {
 	err := cmd.Run()
 	if err != nil {
 		return NewTmuxError("delete_session", fmt.Sprintf("failed to delete session '%s'", sessionName), err)
+	}
+
+	return nil
+}
+
+// KillSession は指定されたtmuxセッションを強制終了する
+// DeleteSessionと異なり、保護されたセッションも強制的に終了する
+func (c *Client) KillSession(sessionName string) error {
+	if !c.SessionExists(sessionName) {
+		return ErrSessionNotFound
+	}
+
+	cmd := exec.Command("tmux", "kill-session", "-t", sessionName)
+	err := cmd.Run()
+	if err != nil {
+		return NewTmuxError("kill_session", fmt.Sprintf("failed to kill session '%s'", sessionName), err)
 	}
 
 	return nil

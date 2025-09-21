@@ -9,6 +9,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
+	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/pkg/logger"
 )
@@ -31,6 +32,7 @@ type workflowExecutor struct {
 	tmux           tmux.TmuxClient
 	workspace      GitWorkspaceManager
 	issueProcessor IssueProcessorUpdater
+	slackNotifier  *slack.Notifier
 	logger         logger.Logger
 	maxPanes       int
 }
@@ -52,6 +54,18 @@ func NewWorkflowExecutor(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManag
 	}
 }
 
+// NewWorkflowExecutorWithSlack はSlack通知付きで新しいWorkflowExecutorを作成する
+func NewWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, slackNotifier *slack.Notifier) WorkflowExecutor {
+	return &workflowExecutor{
+		tmux:           tmuxClient,
+		workspace:      workspace,
+		issueProcessor: processor,
+		slackNotifier:  slackNotifier,
+		logger:         logger.NewLogger(logger.GetLogger()),
+		maxPanes:       DefaultMaxPanes,
+	}
+}
+
 // NewWorkflowExecutorWithLogger はロガー付きで新しいWorkflowExecutorを作成する
 func NewWorkflowExecutorWithLogger(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, log logger.Logger) WorkflowExecutor {
 	return &workflowExecutor{
@@ -66,6 +80,13 @@ func NewWorkflowExecutorWithLogger(tmuxClient tmux.TmuxClient, workspace GitWork
 // ExecutePhase は指定されたフェーズを実行する
 func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error {
 	e.logger.Info("Executing phase", "issue", issueNumber, "phase", phase)
+
+	// Slack通知: フェーズ開始
+	if e.slackNotifier != nil {
+		if err := e.slackNotifier.NotifyPhaseStart(string(phase), issueNumber); err != nil {
+			e.logger.Error("Failed to send Slack notification", "error", err, "phase", phase, "issue", issueNumber)
+		}
+	}
 
 	// IssueProcessorに設定を適用
 	if e.issueProcessor != nil {

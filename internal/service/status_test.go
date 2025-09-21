@@ -29,6 +29,11 @@ func (m *StatusMockTmuxClient) DeleteSession(sessionName string) error {
 	return args.Error(0)
 }
 
+func (m *StatusMockTmuxClient) KillSession(sessionName string) error {
+	args := m.Called(sessionName)
+	return args.Error(0)
+}
+
 func (m *StatusMockTmuxClient) SessionExists(sessionName string) bool {
 	args := m.Called(sessionName)
 	return args.Bool(0)

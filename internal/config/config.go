@@ -69,7 +69,15 @@ func Load(path string) (*Config, error) {
 		return nil, infra.WrapInfraError(err, "failed to read config file")
 	}
 
-	content := expandEnvVars(string(data))
+	// First pass: parse config without environment variable expansion to get conditional settings
+	var tempCfg Config
+	if err := yaml.Unmarshal(data, &tempCfg); err != nil {
+		return nil, infra.NewConfigLoadError(path, "invalid YAML format")
+	}
+	tempCfg.setDefaults()
+
+	// Second pass: expand environment variables with conditional warnings based on parsed config
+	content := expandEnvVarsWithConfig(string(data), &tempCfg)
 
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(content), &cfg); err != nil {
@@ -81,15 +89,37 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-func expandEnvVars(content string) string {
+// expandEnvVarsWithConfig expands environment variables with conditional warnings
+// based on the configuration settings
+func expandEnvVarsWithConfig(content string, cfg *Config) string {
 	return os.Expand(content, func(key string) string {
 		if value, ok := os.LookupEnv(key); ok {
 			return value
 		}
-		// Log warning for undefined environment variable
-		fmt.Fprintf(os.Stderr, "Warning: undefined environment variable: %s\n", key)
+
+		// Check if warning should be shown based on configuration
+		shouldWarn := shouldWarnForEnvVar(key, cfg)
+		if shouldWarn {
+			fmt.Fprintf(os.Stderr, "Warning: undefined environment variable: %s\n", key)
+		}
+
 		return "${" + key + "}"
 	})
+}
+
+// shouldWarnForEnvVar determines if a warning should be shown for a missing environment variable
+func shouldWarnForEnvVar(key string, cfg *Config) bool {
+	switch key {
+	case "GITHUB_TOKEN":
+		// Warn only when auth_method is "env"
+		return cfg.GitHub.AuthMethod == "env"
+	case "SLACK_WEBHOOK_URL":
+		// Warn only when notifications_enabled is true
+		return cfg.Slack.NotificationsEnabled
+	default:
+		// For other environment variables, always warn (preserve existing behavior)
+		return true
+	}
 }
 
 func (c *Config) setDefaults() {
