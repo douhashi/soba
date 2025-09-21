@@ -6,6 +6,8 @@ import (
 	"os"
 
 	yaml "gopkg.in/yaml.v3"
+
+	"github.com/douhashi/soba/internal/infra"
 )
 
 type Config struct {
@@ -57,14 +59,20 @@ type PhaseCommand struct {
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+		if os.IsNotExist(err) {
+			return nil, infra.NewConfigLoadError(path, "file not found")
+		}
+		if os.IsPermission(err) {
+			return nil, infra.NewConfigLoadError(path, "permission denied")
+		}
+		return nil, infra.WrapInfraError(err, "failed to read config file")
 	}
 
 	content := expandEnvVars(string(data))
 
 	var cfg Config
 	if err := yaml.Unmarshal([]byte(content), &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+		return nil, infra.NewConfigLoadError(path, "invalid YAML format")
 	}
 
 	cfg.setDefaults()
