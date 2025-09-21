@@ -2,10 +2,12 @@
 package cli
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
+	"github.com/douhashi/soba/pkg/logger"
 )
 
 var (
@@ -48,6 +50,19 @@ func init() {
 }
 
 func initConfig() {
+	// Initialize logger with appropriate level
+	logLevel := slog.LevelInfo
+	if verbose {
+		logLevel = slog.LevelDebug
+	}
+
+	logger.Init(logger.Config{
+		Environment: "development",
+		Level:       logLevel,
+	})
+
+	log := logger.GetLogger()
+
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 	} else {
@@ -58,7 +73,9 @@ func initConfig() {
 
 	viper.AutomaticEnv()
 
-	if err := viper.ReadInConfig(); err == nil && verbose {
-		fmt.Println("Using config file:", viper.ConfigFileUsed())
+	if err := viper.ReadInConfig(); err == nil {
+		log.Debug("Using config file", "path", viper.ConfigFileUsed())
+	} else if verbose {
+		log.Debug("No config file found", "error", err)
 	}
 }
