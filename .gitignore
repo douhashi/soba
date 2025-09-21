@@ -11,6 +11,8 @@
 # Binary output directories
 bin/
 dist/
+# Main binary
+soba
 
 # Test binary, built with `go test -c`
 *.test

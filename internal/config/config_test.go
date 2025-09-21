@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -438,5 +439,68 @@ slack:
 			// Remove test file for next iteration
 			os.Remove(configPath)
 		})
+	}
+}
+
+func TestLoadConfigWithLogSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	configContent := `
+github:
+  token: test-token
+  repository: owner/repo
+
+log:
+  output_path: /custom/path/logs/soba.log
+  retention_count: 5
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Log.OutputPath != "/custom/path/logs/soba.log" {
+		t.Errorf("Log output_path = %v, want /custom/path/logs/soba.log", cfg.Log.OutputPath)
+	}
+
+	if cfg.Log.RetentionCount != 5 {
+		t.Errorf("Log retention_count = %v, want 5", cfg.Log.RetentionCount)
+	}
+}
+
+func TestLoadConfigWithDefaultLogSettings(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	configContent := `
+github:
+  token: test-token
+  repository: owner/repo
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	expectedPath := fmt.Sprintf(".soba/logs/soba-%d.log", os.Getpid())
+	if cfg.Log.OutputPath != expectedPath {
+		t.Errorf("Default log output_path = %v, want %v", cfg.Log.OutputPath, expectedPath)
+	}
+
+	if cfg.Log.RetentionCount != 10 {
+		t.Errorf("Default log retention_count = %v, want 10", cfg.Log.RetentionCount)
 	}
 }

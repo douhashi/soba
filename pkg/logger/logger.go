@@ -14,12 +14,14 @@ var (
 	mu            sync.RWMutex
 	currentEnv    string
 	currentOutput io.Writer
+	fileWriter    *FileWriter
 )
 
 type Config struct {
 	Environment string
 	Level       slog.Level
 	Output      io.Writer
+	FilePath    string // ログファイルのパス（空の場合はファイル出力なし）
 }
 
 type Fields map[string]interface{}
@@ -166,4 +168,53 @@ func ParseLevel(s string) slog.Level {
 	default:
 		return slog.LevelInfo
 	}
+}
+
+// InitWithFile initializes the logger with file output support
+func InitWithFile(cfg Config) error {
+	mu.Lock()
+	defer mu.Unlock()
+
+	// 既存のFileWriterをクローズ
+	if fileWriter != nil {
+		fileWriter.Close()
+		fileWriter = nil
+	}
+
+	output := cfg.Output
+	if output == nil {
+		output = os.Stdout
+	}
+
+	// ファイルパスが指定されている場合はMultiWriterを作成
+	if cfg.FilePath != "" {
+		fw, err := NewFileWriter(cfg.FilePath)
+		if err != nil {
+			return err
+		}
+		fileWriter = fw
+		output = io.MultiWriter(output, fw)
+	}
+
+	cfg.Output = output
+	initLogger(cfg)
+	return nil
+}
+
+// CloseFileWriter closes the current file writer if exists
+func CloseFileWriter() {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if fileWriter != nil {
+		fileWriter.Close()
+		fileWriter = nil
+	}
+}
+
+// GetFileWriter returns the current file writer
+func GetFileWriter() *FileWriter {
+	mu.RLock()
+	defer mu.RUnlock()
+	return fileWriter
 }
