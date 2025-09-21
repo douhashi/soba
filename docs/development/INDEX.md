@@ -4,3 +4,4 @@
 - `test-strategy.md`: テスト戦略とガイドライン
 - `architecture.md`: システムアーキテクチャ設計
 - `logger-usage.md`: Logger使用ガイドとベストプラクティス
+- `error-handling.md`: エラーハンドリングガイドライン
