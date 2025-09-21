@@ -272,10 +272,20 @@ func setupTestRepo(t *testing.T, repoDir string) {
 	err := os.MkdirAll(repoDir, 0755)
 	require.NoError(t, err)
 
-	// Initialize git repo
-	cmd := execCommand("git", "init", repoDir)
+	// Initialize git repo with main as default branch
+	cmd := execCommand("git", "init", "-b", "main", repoDir)
 	output, err := cmd.CombinedOutput()
-	require.NoError(t, err, "Failed to init repo: %s", string(output))
+	if err != nil {
+		// Fallback for older git versions that don't support -b flag
+		cmd = execCommand("git", "init", repoDir)
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init repo: %s", string(output))
+
+		// Rename default branch to main
+		cmd = execCommand("git", "-C", repoDir, "branch", "-M", "main")
+		_, err = cmd.CombinedOutput()
+		// Ignore error if branch doesn't exist yet (will be created on first commit)
+	}
 
 	// Configure git
 	cmd = execCommand("git", "-C", repoDir, "config", "user.email", "test@example.com")
@@ -298,6 +308,11 @@ func setupTestRepo(t *testing.T, repoDir string) {
 	cmd = execCommand("git", "-C", repoDir, "commit", "-m", "Initial commit")
 	output, err = cmd.CombinedOutput()
 	require.NoError(t, err, "Failed to commit: %s", string(output))
+
+	// Ensure we're on the main branch after commit
+	cmd = execCommand("git", "-C", repoDir, "branch", "-M", "main")
+	_, err = cmd.CombinedOutput()
+	// Ignore error in case branch is already named main
 }
 
 // execCommand is a wrapper for testing
