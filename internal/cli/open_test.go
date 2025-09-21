@@ -79,6 +79,11 @@ func (m *MockTmuxClient) SendCommand(sessionName, windowName string, paneIndex i
 	return args.Error(0)
 }
 
+func (m *MockTmuxClient) KillSession(sessionName string) error {
+	args := m.Called(sessionName)
+	return args.Error(0)
+}
+
 func TestGenerateSessionName(t *testing.T) {
 	tests := []struct {
 		name       string
