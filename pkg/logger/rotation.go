@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,13 +16,18 @@ func FindLogFiles(dir, pattern string) ([]string, error) {
 		return nil, fmt.Errorf("failed to glob log files: %w", err)
 	}
 
+	// ファイルが少ない場合は早期リターン
+	if len(matches) == 0 {
+		return []string{}, nil
+	}
+
 	// ファイル情報を取得してソート用の構造体を作成
 	type fileInfo struct {
 		path    string
 		modTime time.Time
 	}
 
-	var files []fileInfo
+	files := make([]fileInfo, 0, len(matches))
 	for _, path := range matches {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -33,6 +39,11 @@ func FindLogFiles(dir, pattern string) ([]string, error) {
 				modTime: info.ModTime(),
 			})
 		}
+	}
+
+	// ファイルが少ない場合は早期リターン
+	if len(files) == 0 {
+		return []string{}, nil
 	}
 
 	// 更新時間でソート（古い順）
@@ -71,7 +82,10 @@ func CleanupOldLogFiles(dir, pattern string, retentionCount int) error {
 	for _, file := range filesToDelete {
 		if err := os.Remove(file); err != nil {
 			// エラーが発生してもログファイルの削除は継続
-			fmt.Fprintf(os.Stderr, "Warning: failed to remove old log file %s: %v\n", file, err)
+			// 構造化ログに記録
+			slog.Warn("Failed to remove old log file",
+				"file", file,
+				"error", err)
 		}
 	}
 
