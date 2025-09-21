@@ -66,7 +66,7 @@ git:
 # Logging settings
 log:
   # Log file output path (default: .soba/logs/soba-{pid}.log)
-  # You can use environment variables
+  # ${PID} will be replaced with actual process ID at runtime
   output_path: .soba/logs/soba-${PID}.log
   # Number of log files to retain (default: 10)
   retention_count: 10
