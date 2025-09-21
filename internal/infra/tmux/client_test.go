@@ -400,18 +400,28 @@ func TestIsProtectedSession(t *testing.T) {
 		want        bool
 	}{
 		{
-			name:        "保護対象セッション",
+			name:        "保護対象セッション（新形式）",
 			sessionName: "soba-douhashi-soba",
 			want:        true,
 		},
 		{
-			name:        "通常のセッション",
-			sessionName: "soba-test-session",
-			want:        false,
+			name:        "保護対象セッション（旧形式）",
+			sessionName: "soba",
+			want:        true,
+		},
+		{
+			name:        "別のsobaセッション",
+			sessionName: "soba-user-repo",
+			want:        true,
 		},
 		{
 			name:        "sobaプレフィックスではない",
 			sessionName: "normal-session",
+			want:        false,
+		},
+		{
+			name:        "テストセッション",
+			sessionName: "test-soba-session",
 			want:        false,
 		},
 	}

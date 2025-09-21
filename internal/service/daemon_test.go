@@ -96,6 +96,71 @@ func TestDaemonService_IsRunning(t *testing.T) {
 	assert.True(t, running)
 }
 
+func TestDaemonService_InitializeTmuxSession(t *testing.T) {
+	tests := []struct {
+		name          string
+		repository    string
+		sessionExists bool
+		createError   error
+		wantError     bool
+	}{
+		{
+			name:          "Create new session successfully",
+			repository:    "douhashi/soba",
+			sessionExists: false,
+			createError:   nil,
+			wantError:     false,
+		},
+		{
+			name:          "Session already exists",
+			repository:    "douhashi/soba",
+			sessionExists: true,
+			createError:   nil,
+			wantError:     false,
+		},
+		{
+			name:          "Error creating session",
+			repository:    "douhashi/soba",
+			sessionExists: false,
+			createError:   assert.AnError,
+			wantError:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTmux := new(MockTmuxClient)
+
+			sessionName := "soba-douhashi-soba"
+			mockTmux.On("SessionExists", sessionName).Return(tt.sessionExists)
+
+			if !tt.sessionExists {
+				mockTmux.On("CreateSession", sessionName).Return(tt.createError)
+			}
+
+			service := &daemonService{
+				tmux: mockTmux,
+			}
+
+			cfg := &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: tt.repository,
+				},
+			}
+
+			err := service.initializeTmuxSession(cfg)
+
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockTmux.AssertExpectations(t)
+		})
+	}
+}
+
 // MockIssueProcessor はテスト用のモックプロセッサ
 type MockIssueProcessor struct {
 	processFunc      func(ctx context.Context, cfg *config.Config) error

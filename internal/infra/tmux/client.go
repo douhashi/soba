@@ -350,17 +350,17 @@ func (c *Client) SendCommand(sessionName, windowName string, paneIndex int, comm
 }
 
 // isProtectedSession は指定されたセッションが削除から保護されているかを判定する
-// 開発中のセッション（soba-douhashi-soba）は誤削除を防ぐため保護される
+// sobaプレフィックスのセッションは誤削除を防ぐため保護される（テスト用を除く）
 func isProtectedSession(sessionName string) bool {
-	// 現在の開発セッション（soba-douhashi-soba）を保護
-	protectedSessions := []string{
-		"soba-douhashi-soba",
+	// テストセッションは保護対象外
+	if strings.HasPrefix(sessionName, "soba-test-") {
+		return false
 	}
 
-	for _, protected := range protectedSessions {
-		if sessionName == protected {
-			return true
-		}
+	// sobaで始まるセッションはすべて保護対象
+	// これには旧形式の"soba"と新形式の"soba-owner-repo"が含まれる
+	if strings.HasPrefix(sessionName, "soba") {
+		return true
 	}
 
 	return false

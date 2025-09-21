@@ -38,6 +38,7 @@ type daemonService struct {
 	processor IssueProcessorInterface
 	watcher   *IssueWatcher
 	prWatcher *PRWatcher
+	tmux      tmux.TmuxClient
 }
 
 // NewDaemonService creates a new daemon service
@@ -93,13 +94,58 @@ func NewDaemonService() DaemonService {
 		processor: processorWithDeps,
 		watcher:   watcher,
 		prWatcher: prWatcher,
+		tmux:      tmuxClient,
 	}
+}
+
+// initializeTmuxSession はtmuxセッションを初期化する
+func (d *daemonService) initializeTmuxSession(cfg *config.Config) error {
+	log := logger.NewLogger(logger.GetLogger())
+
+	// リポジトリ情報からセッション名を生成
+	sessionName := d.generateSessionName(cfg.GitHub.Repository)
+
+	// セッションが存在しない場合は作成
+	if !d.tmux.SessionExists(sessionName) {
+		if err := d.tmux.CreateSession(sessionName); err != nil {
+			log.Error("Failed to create tmux session", "error", err, "session", sessionName)
+			return fmt.Errorf("failed to create tmux session %s: %w", sessionName, err)
+		}
+		log.Info("Created tmux session", "session", sessionName)
+	} else {
+		log.Debug("Tmux session already exists", "session", sessionName)
+	}
+
+	return nil
+}
+
+// generateSessionName はリポジトリ情報からセッション名を生成する
+func (d *daemonService) generateSessionName(repository string) string {
+	if repository == "" {
+		return "soba"
+	}
+
+	// スラッシュで分割して所有者とリポジトリ名を結合
+	parts := strings.Split(repository, "/")
+	if len(parts) < 2 {
+		// 不正な形式の場合はデフォルトに戻る
+		return "soba"
+	}
+
+	// "soba-{owner}-{repo}"形式で生成
+	sessionName := "soba-" + strings.Join(parts, "-")
+	return sessionName
 }
 
 // StartForeground starts Issue monitoring in foreground mode
 func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config) error {
 	log := logger.NewLogger(logger.GetLogger())
 	log.Info("Starting Issue monitoring in foreground mode")
+
+	// tmuxセッションを初期化
+	if err := d.initializeTmuxSession(cfg); err != nil {
+		return err
+	}
 
 	// IssueWatcherに設定を反映
 	d.watcher.config = cfg
@@ -163,6 +209,11 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 		return errors.WrapInternal(err, "failed to create logs directory")
 	}
 
+	// tmuxセッションを初期化
+	if err := d.initializeTmuxSession(cfg); err != nil {
+		return err
+	}
+
 	// PIDファイルを作成
 	if err := d.createPIDFile(); err != nil {
 		log.Error("Failed to create PID file", "error", err)
@@ -171,9 +222,52 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 
 	log.Info("Daemon started successfully")
 
-	// フォアグラウンドモードと同じ処理を実行
+	// フォアグラウンドモードと同じ処理を実行（セッション初期化は既に完了）
 	// 実際のデーモン化はここでは簡略化（本来はfork等が必要）
-	return d.StartForeground(ctx, cfg)
+	// StartForegroundを呼ばずに直接watcherを起動
+	// IssueWatcherに設定を反映
+	d.watcher.config = cfg
+	d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
+	d.watcher.SetLogger(log)
+
+	// QueueManagerにowner/repoを設定
+	if d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
+		parts := strings.Split(cfg.GitHub.Repository, "/")
+		if len(parts) == 2 {
+			d.watcher.queueManager.owner = parts[0]
+			d.watcher.queueManager.repo = parts[1]
+			d.watcher.queueManager.SetLogger(log)
+		}
+	}
+
+	// PRWatcherに設定を反映
+	if d.prWatcher != nil {
+		d.prWatcher.config = cfg
+		d.prWatcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
+		d.prWatcher.SetLogger(log)
+	}
+
+	// IssueWatcherとPRWatcherを並行して起動
+	errCh := make(chan error, 2)
+
+	// IssueWatcherを起動
+	go func() {
+		errCh <- d.watcher.Start(ctx)
+	}()
+
+	// PRWatcherを起動
+	go func() {
+		errCh <- d.prWatcher.Start(ctx)
+	}()
+
+	// どちらかがエラーで終了したら全体を終了
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // IsRunning checks if daemon is currently running
