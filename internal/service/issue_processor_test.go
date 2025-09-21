@@ -74,6 +74,19 @@ func (m *MockGitHubClient) RemoveLabelFromIssue(ctx context.Context, owner, repo
 	return nil
 }
 
+// PR関連のメソッドを追加（インターフェースを満たすため）
+func (m *MockGitHubClient) ListPullRequests(ctx context.Context, owner, repo string, opts *github.ListPullRequestsOptions) ([]github.PullRequest, bool, error) {
+	return nil, false, nil
+}
+
+func (m *MockGitHubClient) GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, bool, error) {
+	return nil, false, nil
+}
+
+func (m *MockGitHubClient) MergePullRequest(ctx context.Context, owner, repo string, number int, req *github.MergeRequest) (*github.MergeResponse, error) {
+	return nil, nil
+}
+
 func TestIssueProcessor_ProcessIssue(t *testing.T) {
 	tests := []struct {
 		name        string
