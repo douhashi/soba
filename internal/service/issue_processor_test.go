@@ -31,6 +31,10 @@ func (m *MockWorkflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Con
 	return args.Error(0)
 }
 
+func (m *MockWorkflowExecutor) SetIssueProcessor(processor IssueProcessorUpdater) {
+	m.Called(processor)
+}
+
 // IssueProcessor_Processもloggingシステムとの競合でテストが困難なため、スキップ
 func TestIssueProcessor_Process(t *testing.T) {
 	t.Skip("IssueProcessor_Process test skipped due to logging system conflicts in test environment")

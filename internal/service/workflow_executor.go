@@ -22,6 +22,8 @@ const (
 type WorkflowExecutor interface {
 	// ExecutePhase は指定されたフェーズを実行する
 	ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error
+	// SetIssueProcessor はIssueProcessorを設定する
+	SetIssueProcessor(processor IssueProcessorUpdater)
 }
 
 // workflowExecutor はWorkflowExecutorの実装
@@ -66,9 +68,11 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 	e.logger.Info("Executing phase", "issue", issueNumber, "phase", phase)
 
 	// IssueProcessorに設定を適用
-	if err := e.issueProcessor.Configure(cfg); err != nil {
-		e.logger.Error("Failed to configure issue processor", "error", err)
-		return WrapServiceError(err, "failed to configure issue processor")
+	if e.issueProcessor != nil {
+		if err := e.issueProcessor.Configure(cfg); err != nil {
+			e.logger.Error("Failed to configure issue processor", "error", err)
+			return WrapServiceError(err, "failed to configure issue processor")
+		}
 	}
 
 	// フェーズ定義を取得
@@ -78,9 +82,13 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 	}
 
 	// 現在実行されているフェーズに対して、トリガーラベルから実行ラベルへ更新
-	if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel); err != nil {
-		e.logger.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", phaseDef.TriggerLabel, "to", phaseDef.ExecutionLabel)
-		return WrapServiceError(err, "failed to update labels")
+	if e.issueProcessor != nil {
+		if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel); err != nil {
+			e.logger.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", phaseDef.TriggerLabel, "to", phaseDef.ExecutionLabel)
+			return WrapServiceError(err, "failed to update labels")
+		}
+	} else {
+		e.logger.Debug("IssueProcessor is nil, skipping label update", "issue", issueNumber, "phase", phase)
 	}
 
 	// 実行タイプに応じた処理
@@ -341,4 +349,9 @@ func (e *workflowExecutor) getPhaseCommand(cfg *config.Config, phase domain.Phas
 		// Queue, Mergeなどのフェーズはコマンドなし
 		return config.PhaseCommand{}
 	}
+}
+
+// SetIssueProcessor はIssueProcessorを設定する
+func (e *workflowExecutor) SetIssueProcessor(processor IssueProcessorUpdater) {
+	e.issueProcessor = processor
 }
