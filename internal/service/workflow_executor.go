@@ -113,12 +113,14 @@ func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber i
 	windowName := fmt.Sprintf("issue-%d", issueNumber)
 
 	// tmuxセッションとウィンドウのセットアップ
-	if err := e.setupTmuxSession(sessionName, windowName); err != nil {
+	windowCreated, err := e.setupTmuxSession(sessionName, windowName)
+	if err != nil {
 		return err
 	}
 
 	// ペイン管理（必要な場合）
-	if phaseDef.RequiresPane {
+	// windowが新規作成された場合は、既に1ペインがあるのでスキップ
+	if phaseDef.RequiresPane && !windowCreated {
 		if err := e.managePane(sessionName, windowName); err != nil {
 			e.logger.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
 			return err
@@ -149,12 +151,13 @@ func (e *workflowExecutor) prepareWorkspaceIfNeeded(issueNumber int, phaseDef *d
 }
 
 // setupTmuxSession はtmuxセッションとウィンドウをセットアップする
-func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) error {
+// windowが新規作成された場合はtrueを返す
+func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) (bool, error) {
 	// セッションが存在しなければ作成
 	if !e.tmux.SessionExists(sessionName) {
 		if err := e.tmux.CreateSession(sessionName); err != nil {
 			e.logger.Error("Failed to create tmux session", "error", err, "session", sessionName)
-			return NewTmuxManagementError("create session", sessionName, err.Error())
+			return false, NewTmuxManagementError("create session", sessionName, err.Error())
 		}
 		e.logger.Debug("Created tmux session", "session", sessionName)
 	}
@@ -163,18 +166,20 @@ func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) erro
 	exists, err := e.tmux.WindowExists(sessionName, windowName)
 	if err != nil {
 		e.logger.Error("Failed to check window existence", "error", err, "session", sessionName, "window", windowName)
-		return NewTmuxManagementError("check window", windowName, err.Error())
+		return false, NewTmuxManagementError("check window", windowName, err.Error())
 	}
 
+	windowCreated := false
 	if !exists {
 		if err := e.tmux.CreateWindow(sessionName, windowName); err != nil {
 			e.logger.Error("Failed to create tmux window", "error", err, "session", sessionName, "window", windowName)
-			return NewTmuxManagementError("create window", windowName, err.Error())
+			return false, NewTmuxManagementError("create window", windowName, err.Error())
 		}
 		e.logger.Debug("Created tmux window", "session", sessionName, "window", windowName)
+		windowCreated = true
 	}
 
-	return nil
+	return windowCreated, nil
 }
 
 // executeCommand はフェーズコマンドを実行する

@@ -147,9 +147,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tmux.On("SessionExists", "soba").Return(true)
 				tmux.On("WindowExists", "soba", "issue-456").Return(false, nil)
 				tmux.On("CreateWindow", "soba", "issue-456").Return(nil)
-				tmux.On("GetPaneCount", "soba", "issue-456").Return(0, nil)
-				tmux.On("CreatePane", "soba", "issue-456").Return(nil)
-				tmux.On("ResizePanes", "soba", "issue-456").Return(nil)
+				// Window was created, so no pane management
 				tmux.On("GetLastPaneIndex", "soba", "issue-456").Return(0, nil)
 				tmux.On("SendCommand", "soba", "issue-456", 0, `cd .git/soba/worktrees/issue-456 && echo "Planning"`).Return(nil)
 			},
@@ -348,9 +346,7 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockTmux.On("SessionExists", "soba").Return(true)
 	mockTmux.On("WindowExists", "soba", "issue-1").Return(false, nil)
 	mockTmux.On("CreateWindow", "soba", "issue-1").Return(nil)
-	mockTmux.On("GetPaneCount", "soba", "issue-1").Return(0, nil)
-	mockTmux.On("CreatePane", "soba", "issue-1").Return(nil)
-	mockTmux.On("ResizePanes", "soba", "issue-1").Return(nil)
+	// Window was created, so no pane management
 	mockTmux.On("GetLastPaneIndex", "soba", "issue-1").Return(0, nil)
 	mockTmux.On("SendCommand", "soba", "issue-1", 0, `cd .git/soba/worktrees/issue-1 && soba:plan "1"`).Return(nil)
 
@@ -374,6 +370,103 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockWorkspace.AssertCalled(t, "PrepareWorkspace", 1) // worktree準備が呼ばれたことを確認
 	mockTmux.AssertExpectations(t)
 	mockProcessor.AssertExpectations(t)
+}
+
+func TestWorkflowExecutor_executeCommandPhase_PaneSkip(t *testing.T) {
+	tests := []struct {
+		name             string
+		windowExists     bool
+		requiresPane     bool
+		expectManagePane bool
+		description      string
+	}{
+		{
+			name:             "New window created - skip pane management even if requiresPane is true",
+			windowExists:     false, // window will be created
+			requiresPane:     true,
+			expectManagePane: false, // should skip pane management
+			description:      "When a new window is created, pane management should be skipped",
+		},
+		{
+			name:             "Existing window - perform pane management if requiresPane is true",
+			windowExists:     true, // window exists
+			requiresPane:     true,
+			expectManagePane: true, // should perform pane management
+			description:      "When using existing window, pane management should be performed",
+		},
+		{
+			name:             "New window created - no pane management if requiresPane is false",
+			windowExists:     false, // window will be created
+			requiresPane:     false,
+			expectManagePane: false, // should skip pane management
+			description:      "When requiresPane is false, pane management should be skipped",
+		},
+		{
+			name:             "Existing window - no pane management if requiresPane is false",
+			windowExists:     true, // window exists
+			requiresPane:     false,
+			expectManagePane: false, // should skip pane management
+			description:      "When requiresPane is false, pane management should be skipped",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTmux := new(MockTmuxClient)
+			mockWorkspace := new(MockWorkspaceManager)
+
+			// Setup tmux session mocks
+			mockTmux.On("SessionExists", "soba").Return(true)
+			mockTmux.On("WindowExists", "soba", "issue-42").Return(tt.windowExists, nil)
+
+			if !tt.windowExists {
+				// Window will be created
+				mockTmux.On("CreateWindow", "soba", "issue-42").Return(nil)
+			}
+
+			// Setup pane management mocks if expected
+			if tt.expectManagePane {
+				mockTmux.On("GetPaneCount", "soba", "issue-42").Return(1, nil)
+				mockTmux.On("CreatePane", "soba", "issue-42").Return(nil)
+				mockTmux.On("ResizePanes", "soba", "issue-42").Return(nil)
+			}
+
+			// Setup command execution mocks
+			mockTmux.On("GetLastPaneIndex", "soba", "issue-42").Return(0, nil)
+			mockTmux.On("SendCommand", "soba", "issue-42", 0, mock.Anything).Return(nil)
+
+			cfg := &config.Config{
+				Workflow: config.WorkflowConfig{
+					TmuxCommandDelay: 0,
+				},
+				Phase: config.PhaseConfig{
+					Plan: config.PhaseCommand{
+						Command: "echo",
+						Options: []string{"test"},
+					},
+				},
+			}
+
+			executor := &workflowExecutor{
+				tmux:      mockTmux,
+				workspace: mockWorkspace,
+				logger:    logger.NewLogger(logger.GetLogger()),
+				maxPanes:  4,
+			}
+
+			// Create phase definition with requiresPane setting
+			phaseDef := &domain.PhaseDefinition{
+				Name:         "plan",
+				RequiresPane: tt.requiresPane,
+			}
+
+			err := executor.executeCommandPhase(cfg, 42, domain.PhasePlan, phaseDef)
+			assert.NoError(t, err)
+
+			mockTmux.AssertExpectations(t)
+			mockWorkspace.AssertExpectations(t)
+		})
+	}
 }
 
 func TestWorkflowExecutor_buildCommand(t *testing.T) {
@@ -450,6 +543,113 @@ func TestWorkflowExecutor_buildCommand(t *testing.T) {
 			executor := &workflowExecutor{}
 			result := executor.buildCommand(tt.phaseCommand, tt.issueNumber)
 			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestWorkflowExecutor_setupTmuxSession(t *testing.T) {
+	tests := []struct {
+		name          string
+		sessionExists bool
+		windowExists  bool
+		windowCreated bool
+		expectedError error
+		setupMocks    func(*MockTmuxClient)
+	}{
+		{
+			name:          "Create new session and window",
+			sessionExists: false,
+			windowExists:  false,
+			windowCreated: true,
+			expectedError: nil,
+			setupMocks: func(m *MockTmuxClient) {
+				m.On("SessionExists", "soba").Return(false)
+				m.On("CreateSession", "soba").Return(nil)
+				m.On("WindowExists", "soba", "issue-1").Return(false, nil)
+				m.On("CreateWindow", "soba", "issue-1").Return(nil)
+			},
+		},
+		{
+			name:          "Session exists, create new window",
+			sessionExists: true,
+			windowExists:  false,
+			windowCreated: true,
+			expectedError: nil,
+			setupMocks: func(m *MockTmuxClient) {
+				m.On("SessionExists", "soba").Return(true)
+				m.On("WindowExists", "soba", "issue-1").Return(false, nil)
+				m.On("CreateWindow", "soba", "issue-1").Return(nil)
+			},
+		},
+		{
+			name:          "Both session and window exist",
+			sessionExists: true,
+			windowExists:  true,
+			windowCreated: false,
+			expectedError: nil,
+			setupMocks: func(m *MockTmuxClient) {
+				m.On("SessionExists", "soba").Return(true)
+				m.On("WindowExists", "soba", "issue-1").Return(true, nil)
+			},
+		},
+		{
+			name:          "Failed to create session",
+			sessionExists: false,
+			windowExists:  false,
+			windowCreated: false,
+			expectedError: errors.New("create session failed"),
+			setupMocks: func(m *MockTmuxClient) {
+				m.On("SessionExists", "soba").Return(false)
+				m.On("CreateSession", "soba").Return(errors.New("create session failed"))
+			},
+		},
+		{
+			name:          "Failed to check window existence",
+			sessionExists: true,
+			windowExists:  false,
+			windowCreated: false,
+			expectedError: errors.New("check window failed"),
+			setupMocks: func(m *MockTmuxClient) {
+				m.On("SessionExists", "soba").Return(true)
+				m.On("WindowExists", "soba", "issue-1").Return(false, errors.New("check window failed"))
+			},
+		},
+		{
+			name:          "Failed to create window",
+			sessionExists: true,
+			windowExists:  false,
+			windowCreated: false,
+			expectedError: errors.New("create window failed"),
+			setupMocks: func(m *MockTmuxClient) {
+				m.On("SessionExists", "soba").Return(true)
+				m.On("WindowExists", "soba", "issue-1").Return(false, nil)
+				m.On("CreateWindow", "soba", "issue-1").Return(errors.New("create window failed"))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTmux := new(MockTmuxClient)
+			tt.setupMocks(mockTmux)
+
+			executor := &workflowExecutor{
+				tmux:     mockTmux,
+				logger:   logger.NewLogger(logger.GetLogger()),
+				maxPanes: 4,
+			}
+
+			windowCreated, err := executor.setupTmuxSession("soba", "issue-1")
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError.Error())
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.windowCreated, windowCreated)
+			}
+
+			mockTmux.AssertExpectations(t)
 		})
 	}
 }
