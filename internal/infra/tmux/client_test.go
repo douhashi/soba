@@ -1,11 +1,47 @@
 package tmux
 
 import (
+	"os"
+	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 )
 
+// checkTmuxAvailable はtmuxが利用可能かチェックする
+// テスト環境でtmuxが使えない場合はテストをスキップする
+func checkTmuxAvailable(t *testing.T) {
+	t.Helper()
+
+	// tmuxコマンドが存在するかチェック
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip("tmux not available, skipping test")
+	}
+
+	// tmuxサーバーが起動可能かチェック
+	cmd := exec.Command("tmux", "list-sessions")
+	if err := cmd.Run(); err != nil {
+		// tmuxサーバーが起動していない場合は問題ない
+		// 他のエラーの場合はログに記録するが、テストは続行
+		t.Logf("tmux server check result: %v", err)
+	}
+}
+
+// getCommandDelay は設定からコマンド実行の遅延時間を取得する
+// 環境変数TMUX_COMMAND_DELAY_SECONDSが設定されていればそれを使用し、
+// なければテスト環境用のデフォルト値（1秒）を返す
+func getCommandDelay() time.Duration {
+	if delayStr := os.Getenv("TMUX_COMMAND_DELAY_SECONDS"); delayStr != "" {
+		if delay, err := strconv.Atoi(delayStr); err == nil {
+			return time.Duration(delay) * time.Second
+		}
+	}
+	// テスト環境用のデフォルト遅延（本番の3秒から短縮）
+	return 1 * time.Second
+}
+
 func TestTmuxClient_CreateSession(t *testing.T) {
+	checkTmuxAvailable(t)
 	tests := []struct {
 		name       string
 		repository string
@@ -25,6 +61,16 @@ func TestTmuxClient_CreateSession(t *testing.T) {
 			name:       "スラッシュを含むリポジトリ名",
 			repository: "owner/repo",
 			wantErr:    false,
+		},
+		{
+			name:       "無効な文字を含むリポジトリ名",
+			repository: "invalid repo name",
+			wantErr:    true,
+		},
+		{
+			name:       "長すぎるリポジトリ名",
+			repository: "verylongrepositoryname" + string(make([]byte, 100)),
+			wantErr:    true,
 		},
 	}
 
@@ -68,6 +114,7 @@ func TestTmuxClient_CreateSession(t *testing.T) {
 }
 
 func TestTmuxClient_DeleteSession(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-session"
 
@@ -98,6 +145,7 @@ func TestTmuxClient_DeleteSession(t *testing.T) {
 }
 
 func TestTmuxClient_CreateWindow(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-window"
 	windowName := "test-window"
@@ -127,6 +175,7 @@ func TestTmuxClient_CreateWindow(t *testing.T) {
 }
 
 func TestTmuxClient_DeleteWindow(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-delete-window"
 	windowName := "test-window"
@@ -161,6 +210,7 @@ func TestTmuxClient_DeleteWindow(t *testing.T) {
 }
 
 func TestTmuxClient_CreatePane(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-pane"
 	windowName := "test-window"
@@ -195,6 +245,7 @@ func TestTmuxClient_CreatePane(t *testing.T) {
 }
 
 func TestTmuxClient_DeletePane(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-delete-pane"
 	windowName := "test-window"
@@ -242,6 +293,7 @@ func TestTmuxClient_DeletePane(t *testing.T) {
 }
 
 func TestTmuxClient_ResizePanes(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-resize"
 	windowName := "test-window"
@@ -273,6 +325,7 @@ func TestTmuxClient_ResizePanes(t *testing.T) {
 }
 
 func TestTmuxClient_GetFirstPaneIndex(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-first-pane"
 	windowName := "test-window"
@@ -303,6 +356,7 @@ func TestTmuxClient_GetFirstPaneIndex(t *testing.T) {
 }
 
 func TestTmuxClient_SendCommand(t *testing.T) {
+	checkTmuxAvailable(t)
 	client := NewClient()
 	sessionName := "soba-test-command"
 	windowName := "test-window"
@@ -322,8 +376,8 @@ func TestTmuxClient_SendCommand(t *testing.T) {
 		t.Fatalf("Failed to create test window: %v", err)
 	}
 
-	// ウィンドウが完全に準備されるまで設定に従って待機（tmux_command_delay: 3秒）
-	time.Sleep(3 * time.Second)
+	// ウィンドウが完全に準備されるまで設定に従って待機
+	time.Sleep(getCommandDelay())
 
 	// 動的に最初のペインインデックスを取得
 	firstPaneIndex, err := client.GetFirstPaneIndex(sessionName, windowName)

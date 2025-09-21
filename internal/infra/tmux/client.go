@@ -3,6 +3,7 @@ package tmux
 import (
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -43,8 +44,8 @@ func NewClient() TmuxClient {
 // CreateSession は指定された名前で新しいtmuxセッションを作成する
 // 既に同名のセッションが存在する場合はエラーを返さない
 func (c *Client) CreateSession(sessionName string) error {
-	if sessionName == "" {
-		return ErrInvalidRepository
+	if err := validateSessionName(sessionName); err != nil {
+		return err
 	}
 
 	if c.SessionExists(sessionName) {
@@ -325,4 +326,25 @@ func isProtectedSession(sessionName string) bool {
 	}
 
 	return false
+}
+
+// validateSessionName はセッション名の有効性を検証する
+// 空文字列、無効な文字（スペース、特殊文字）、長すぎる名前をチェックする
+func validateSessionName(sessionName string) error {
+	if sessionName == "" {
+		return ErrInvalidRepository
+	}
+
+	// セッション名長の制限（tmuxの制限に合わせて100文字）
+	if len(sessionName) > 100 {
+		return NewTmuxError("session_name_validation", "session name too long (max 100 characters)", nil)
+	}
+
+	// 無効な文字をチェック（英数字、ハイフン、アンダースコア、スラッシュのみ許可）
+	validPattern := regexp.MustCompile(`^[a-zA-Z0-9\-_/]+$`)
+	if !validPattern.MatchString(sessionName) {
+		return NewTmuxError("session_name_validation", "session name contains invalid characters (only alphanumeric, -, _, / allowed)", nil)
+	}
+
+	return nil
 }
