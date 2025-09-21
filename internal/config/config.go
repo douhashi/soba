@@ -41,6 +41,7 @@ type SlackConfig struct {
 type GitConfig struct {
 	WorktreeBasePath string `yaml:"worktree_base_path"`
 	SetupWorkspace   bool   `yaml:"setup_workspace"`
+	BaseBranch       string `yaml:"base_branch"`
 }
 
 type PhaseConfig struct {
@@ -103,5 +104,8 @@ func (c *Config) setDefaults() {
 	}
 	if c.Git.WorktreeBasePath == "" {
 		c.Git.WorktreeBasePath = ".git/soba/worktrees"
+	}
+	if c.Git.BaseBranch == "" {
+		c.Git.BaseBranch = "main"
 	}
 }

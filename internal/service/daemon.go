@@ -11,6 +11,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
+	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/pkg/errors"
@@ -41,11 +42,28 @@ type daemonService struct {
 func NewDaemonService() DaemonService {
 	workDir, _ := os.Getwd()
 
+	// デフォルト設定を作成（後で実際の設定で上書きされる）
+	defaultCfg := &config.Config{
+		Git: config.GitConfig{
+			WorktreeBasePath: ".git/soba/worktrees",
+			BaseBranch:       "main",
+		},
+	}
+
 	// 依存関係を初期化
 	tokenProvider := github.NewDefaultTokenProvider()
 	githubClient, _ := github.NewClient(tokenProvider, &github.ClientOptions{})
 	tmuxClient := tmux.NewClient()
-	workspace := NewGitWorkspaceManager(workDir)
+
+	// Git クライアントとワークスペースマネージャーを初期化
+	gitClient, err := git.NewClient(workDir)
+	if err != nil {
+		log := logger.GetLogger()
+		log.Error("Failed to initialize git client", "error", err)
+		return nil
+	}
+	workspace := NewGitWorkspaceManager(defaultCfg, gitClient)
+
 	processor := NewIssueProcessor() // 一時的に既存のコンストラクタを使用
 	executor := NewWorkflowExecutor(tmuxClient, workspace, processor)
 	strategy := domain.NewDefaultPhaseStrategy()
