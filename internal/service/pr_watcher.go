@@ -143,6 +143,43 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 		return fmt.Errorf("invalid repository configuration: %s", w.config.GitHub.Repository)
 	}
 
+	// mergeableがnullの場合は、GitHub APIが計算中の可能性があるため、個別にPR情報を再取得
+	if pr.MergeableState == "" {
+		w.logger.Info("PR mergeable state is unknown, fetching detailed PR info",
+			"number", pr.Number,
+		)
+
+		// PR情報を個別に取得（最大3回リトライ）
+		var detailedPR *github.PullRequest
+		var err error
+		for i := 0; i < 3; i++ {
+			detailedPR, _, err = w.client.GetPullRequest(ctx, owner, repo, pr.Number)
+			if err != nil {
+				w.logger.Error("Failed to get detailed PR info",
+					"number", pr.Number,
+					"attempt", i+1,
+					"error", err,
+				)
+				return err
+			}
+
+			// mergeableStateが判明したら終了
+			if detailedPR.MergeableState != "" {
+				pr = *detailedPR
+				break
+			}
+
+			// まだ計算中の場合は少し待つ
+			if i < 2 {
+				w.logger.Debug("PR mergeable state still unknown, waiting...",
+					"number", pr.Number,
+					"attempt", i+1,
+				)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}
+
 	// マージ可能な状態かチェック
 	if !pr.Mergeable || pr.MergeableState != "clean" {
 		w.logger.Info("PR is not in mergeable state",
