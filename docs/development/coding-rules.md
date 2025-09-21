@@ -59,20 +59,24 @@ type IssueService interface {
 ```
 
 ### エラーハンドリング
-```go
-// カスタムエラー型
-type ValidationError struct {
-    Field string
-    Value interface{}
-}
 
-func (e *ValidationError) Error() string {
-    return fmt.Sprintf("validation failed for %s: %v", e.Field, e.Value)
-}
+**共通エラーハンドラの利用**
+- `pkg/errors`パッケージを使用
+- エラーラップと文脈情報の追加
+- 詳細: [エラーハンドリングガイドライン](./error-handling.md)
+
+```go
+// pkg/errorsを使用したエラーハンドリング
+import "github.com/douhashi/soba/pkg/errors"
 
 // エラーラップ
 if err != nil {
-    return fmt.Errorf("failed to process issue #%d: %w", issueNumber, err)
+    return errors.Wrap(err, "failed to process issue")
+}
+
+// HTTPエラーレスポンス
+func handleError(w http.ResponseWriter, err error) {
+    errors.HandleHTTPError(w, err)
 }
 ```
 
@@ -165,13 +169,28 @@ func TestValidateConfig(t *testing.T) {
 
 ## ログ
 
-### 構造化ログ
+### 共通Loggerの利用
+
+**pkg/loggerパッケージの使用**
+- 統一されたログフォーマット
+- 構造化ログの活用
+- 詳細: [Logger使用ガイド](./logger-usage.md)
+
 ```go
-slog.Info("processing issue",
+import "github.com/douhashi/soba/pkg/logger"
+
+// ロガーの初期化（main関数で一度だけ）
+log := logger.New()
+
+// 構造化ログ
+log.Info("processing issue",
     "issue_number", issue.Number,
     "phase", phase,
     "duration", time.Since(start),
 )
+
+// エラーログ
+log.Error("failed to process", "error", err)
 ```
 
 ## コメント
