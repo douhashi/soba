@@ -487,6 +487,9 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 			branch: "main",
 			setup: func(t *testing.T, dir string) {
 				runCommand(t, dir, "git", "init")
+				// Set Git configuration for CI environment
+				runCommand(t, dir, "git", "config", "user.email", "test@example.com")
+				runCommand(t, dir, "git", "config", "user.name", "Test User")
 				runCommand(t, dir, "git", "checkout", "-b", "main")
 				writeFile(t, filepath.Join(dir, "README.md"), "# Test")
 				runCommand(t, dir, "git", "add", ".")
@@ -588,6 +591,11 @@ func createTestRepository(t *testing.T, dir string) {
 
 	// Initialize git repository
 	runCommand(t, dir, "git", "init")
+
+	// Set Git configuration for CI environment
+	runCommand(t, dir, "git", "config", "user.email", "test@example.com")
+	runCommand(t, dir, "git", "config", "user.name", "Test User")
+
 	runCommand(t, dir, "git", "checkout", "-b", "main")
 
 	// Create initial commit
