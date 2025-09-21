@@ -146,6 +146,9 @@ type ResolvedClients struct {
 	TmuxClient   tmux.TmuxClient
 }
 
+// Clients is an alias for ResolvedClients for compatibility
+type Clients = ResolvedClients
+
 // ResolvedServices holds resolved service dependencies
 type ResolvedServices struct {
 	WorkspaceManager GitWorkspaceManager

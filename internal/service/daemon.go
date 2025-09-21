@@ -109,21 +109,23 @@ func (d *daemonService) initializeTmuxSession(cfg *config.Config) error {
 	return nil
 }
 
+const DefaultSessionPrefix = "soba"
+
 // generateSessionName はリポジトリ情報からセッション名を生成する
 func (d *daemonService) generateSessionName(repository string) string {
 	if repository == "" {
-		return "soba"
+		return DefaultSessionPrefix
 	}
 
 	// スラッシュで分割して所有者とリポジトリ名を結合
 	parts := strings.Split(repository, "/")
 	if len(parts) < 2 {
 		// 不正な形式の場合はデフォルトに戻る
-		return "soba"
+		return DefaultSessionPrefix
 	}
 
 	// "soba-{owner}-{repo}"形式で生成
-	sessionName := "soba-" + strings.Join(parts, "-")
+	sessionName := DefaultSessionPrefix + "-" + strings.Join(parts, "-")
 	return sessionName
 }
 
