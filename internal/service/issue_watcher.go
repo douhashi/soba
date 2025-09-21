@@ -117,48 +117,79 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 	// シングルライン処理: 処理可能なIssueを選択
 	issueToProcess := w.selectIssueForProcessing(issues)
 
+	// 変更を検知してログ出力
+	w.detectAndLogChanges(issues)
+
+	// 選択されたIssueを処理
+	if err := w.processSelectedIssue(ctx, issueToProcess); err != nil {
+		w.logger.Error("Failed to process selected issue", "error", err)
+	}
+
+	// 自動フェーズ遷移を処理
+	w.handleAutoTransitions(ctx, issues)
+
+	return nil
+}
+
+// detectAndLogChanges は変更を検知してログ出力を行う
+func (w *IssueWatcher) detectAndLogChanges(issues []github.Issue) {
 	changes := w.detectChanges(issues)
-	if len(changes) > 0 {
-		w.logger.Info("Detected issue changes", "count", len(changes))
-		for _, change := range changes {
-			w.logChange(change)
-			// PhaseStrategyが有効な場合は、フェーズ分析を行う
-			if w.phaseStrategy != nil && change.Type == IssueChangeTypeLabelChanged {
-				w.analyzeAndLogPhaseTransition(change)
-			}
-		}
+	if len(changes) == 0 {
+		return
 	}
 
-	// 選択されたIssueのみを処理
-	if issueToProcess != nil && w.processor != nil {
-		// soba:todoラベルを持つ場合のみ処理を開始
-		if w.hasLabel(*issueToProcess, "soba:todo") {
-			w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number)
-			if err := w.processor.ProcessIssue(ctx, w.config, *issueToProcess); err != nil {
-				w.logger.Error("Failed to process issue", "error", err, "issue", issueToProcess.Number)
-			}
+	w.logger.Info("Detected issue changes", "count", len(changes))
+	for _, change := range changes {
+		w.logChange(change)
+		// PhaseStrategyが有効な場合は、フェーズ分析を行う
+		if w.phaseStrategy != nil && change.Type == IssueChangeTypeLabelChanged {
+			w.analyzeAndLogPhaseTransition(change)
 		}
 	}
+}
 
-	// フェーズ遷移の自動化: 各フェーズの完了を検知して次フェーズへ
-	if w.phaseStrategy != nil && w.processor != nil {
-		for _, issue := range issues {
-			// 処理中のIssueのみ対象（シングルライン処理を考慮）
-			if w.currentIssue != nil && issue.Number != *w.currentIssue {
-				continue
-			}
+// processSelectedIssue は選択されたIssueを処理する
+func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess *github.Issue) error {
+	if issueToProcess == nil || w.processor == nil {
+		return nil
+	}
 
-			// 自動遷移が必要なフェーズを確認
-			if w.shouldAutoTransition(issue) {
-				w.logger.Info("Auto-transitioning issue phase", "issue", issue.Number)
-				if err := w.processor.ProcessIssue(ctx, w.config, issue); err != nil {
-					w.logger.Error("Failed to auto-transition issue", "error", err, "issue", issue.Number)
-				}
-			}
-		}
+	// soba:todoラベルを持つ場合のみ処理を開始
+	if !w.hasLabel(*issueToProcess, "soba:todo") {
+		return nil
+	}
+
+	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number)
+	if err := w.processor.ProcessIssue(ctx, w.config, *issueToProcess); err != nil {
+		w.logger.Error("Failed to process issue", "error", err, "issue", issueToProcess.Number)
+		return err
 	}
 
 	return nil
+}
+
+// handleAutoTransitions は自動フェーズ遷移を処理する
+func (w *IssueWatcher) handleAutoTransitions(ctx context.Context, issues []github.Issue) {
+	if w.phaseStrategy == nil || w.processor == nil {
+		return
+	}
+
+	for _, issue := range issues {
+		// 処理中のIssueのみ対象（シングルライン処理を考慮）
+		if w.currentIssue != nil && issue.Number != *w.currentIssue {
+			continue
+		}
+
+		// 自動遷移が必要なフェーズを確認
+		if !w.shouldAutoTransition(issue) {
+			continue
+		}
+
+		w.logger.Info("Auto-transitioning issue phase", "issue", issue.Number)
+		if err := w.processor.ProcessIssue(ctx, w.config, issue); err != nil {
+			w.logger.Error("Failed to auto-transition issue", "error", err, "issue", issue.Number)
+		}
+	}
 }
 
 // fetchFilteredIssues はフィルタされたIssue一覧を取得する
