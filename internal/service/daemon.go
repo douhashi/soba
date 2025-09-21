@@ -50,32 +50,27 @@ func NewDaemonService() DaemonService {
 	githubClient, _ := github.NewClient(tokenProvider, &github.ClientOptions{})
 	tmuxClient := tmux.NewClient()
 
-	// 一時的にコメントアウト - GitHubClientInterface問題のため
-	// defaultCfg := &config.Config{
-	//     Git: config.GitConfig{
-	//         WorktreeBasePath: ".git/soba/worktrees",
-	//         BaseBranch:       "main",
-	//     },
-	// }
-	// gitClient, err := git.NewClient(workDir)
-	// if err != nil {
-	//     log := logger.GetLogger()
-	//     log.Error("Failed to initialize git client", "error", err)
-	//     return nil
-	// }
-	// 型キャスト問題を一時的に回避
-	// TODO: GitHubClientInterfaceとgithub.Clientを統一する
-	var processor IssueProcessorInterface
-	var watcher *IssueWatcher
-	var prWatcher *PRWatcher
+	// デフォルト設定でwatcherを初期化
+	defaultCfg := &config.Config{
+		Git: config.GitConfig{
+			WorktreeBasePath: ".git/soba/worktrees",
+			BaseBranch:       "main",
+		},
+		Workflow: config.WorkflowConfig{
+			Interval: 20, // デフォルト20秒
+		},
+	}
 
-	// 一時的にnilで初期化
-	// processor = NewIssueProcessor(githubClient, nil)
-	// executor = NewWorkflowExecutor(tmuxClient, workspace, processor)
-	// processorWithDeps := NewIssueProcessor(githubClient, executor)
-	// queueManager := NewQueueManager(githubClient, "", "")
-	// watcher = NewIssueWatcher(githubClient, &config.Config{})
-	// prWatcher = NewPRWatcher(githubClient, &config.Config{})
+	// watcherを初期化（GitHubClientInterfaceを正しく実装）
+	watcher := NewIssueWatcher(githubClient, defaultCfg)
+	prWatcher := NewPRWatcher(githubClient, defaultCfg)
+
+	// QueueManagerを初期化
+	queueManager := NewQueueManager(githubClient, "", "")
+	watcher.SetQueueManager(queueManager)
+
+	// IssueProcessorを初期化（一時的にnilで作成）
+	var processor IssueProcessorInterface = nil
 
 	// ClosedIssueCleanupServiceを初期化（設定は後で更新）
 	closedIssueCleanupService := NewClosedIssueCleanupService(
