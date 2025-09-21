@@ -30,6 +30,7 @@ type IssueProcessorInterface interface {
 	Process(ctx context.Context, cfg *config.Config) error
 	ProcessIssue(ctx context.Context, cfg *config.Config, issue github.Issue) error
 	UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error
+	Configure(cfg *config.Config) error
 }
 
 type daemonService struct {
@@ -64,12 +65,17 @@ func NewDaemonService() DaemonService {
 	}
 	workspace := NewGitWorkspaceManager(defaultCfg, gitClient)
 
-	processor := NewIssueProcessor() // 一時的に既存のコンストラクタを使用
-	executor := NewWorkflowExecutor(tmuxClient, workspace, processor)
+	// 最初にStrategyを作成
 	strategy := domain.NewDefaultPhaseStrategy()
 
-	// ProcessorをExecutorとStrategyと一緒に再初期化
-	processorWithDeps := NewIssueProcessorWithDependencies(githubClient, executor, strategy)
+	// GitHubクライアント付きでProcessorを初期化
+	processor := NewIssueProcessor(githubClient, nil, strategy)
+
+	// ProcessorをExecutorに渡す
+	executor := NewWorkflowExecutor(tmuxClient, workspace, processor)
+
+	// ProcessorにExecutorを設定（循環依存を解決）
+	processorWithDeps := NewIssueProcessor(githubClient, executor, strategy)
 
 	// IssueWatcherを初期化
 	// 注: configは後でStartForeground/StartDaemonで設定される

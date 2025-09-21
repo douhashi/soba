@@ -26,13 +26,8 @@ type issueProcessor struct {
 	strategy     domain.PhaseStrategy
 }
 
-// NewIssueProcessor creates a new issue processor
-func NewIssueProcessor() IssueProcessorInterface {
-	return &issueProcessor{}
-}
-
-// NewIssueProcessorWithDependencies creates a new issue processor with dependencies
-func NewIssueProcessorWithDependencies(client GitHubClientInterface, executor WorkflowExecutor, strategy domain.PhaseStrategy) IssueProcessorInterface {
+// NewIssueProcessor creates a new issue processor with dependencies
+func NewIssueProcessor(client GitHubClientInterface, executor WorkflowExecutor, strategy domain.PhaseStrategy) IssueProcessorInterface {
 	return &issueProcessor{
 		githubClient: client,
 		executor:     executor,
@@ -43,6 +38,28 @@ func NewIssueProcessorWithDependencies(client GitHubClientInterface, executor Wo
 // ProcessIssue processes a single issue
 func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, issue github.Issue) error {
 	log := logger.NewNopLogger() // テスト環境でのロガー競合を避けるためNopLoggerを使用
+
+	// owner/repoを設定から取得して設定
+	if cfg.GitHub.Repository != "" {
+		parts := strings.Split(cfg.GitHub.Repository, "/")
+		if len(parts) == 2 {
+			p.owner = parts[0]
+			p.repo = parts[1]
+		}
+	}
+
+	// GitHubクライアントが初期化されていない場合は初期化
+	if p.githubClient == nil {
+		tokenProvider := github.NewDefaultTokenProvider()
+		client, err := github.NewClient(tokenProvider, &github.ClientOptions{
+			Logger: log,
+		})
+		if err != nil {
+			log.Error("Failed to create GitHub client", "error", err)
+			return errors.WrapInternal(err, "failed to create GitHub client")
+		}
+		p.githubClient = client
+	}
 
 	// ラベル名の配列を取得
 	labelNames := make([]string, 0, len(issue.Labels))
@@ -122,6 +139,30 @@ func (p *issueProcessor) Process(ctx context.Context, cfg *config.Config) error 
 			"title", issue.Title,
 			"state", issue.State,
 		)
+	}
+
+	return nil
+}
+
+// Configure は設定を適用する
+func (p *issueProcessor) Configure(cfg *config.Config) error {
+	// owner/repoを設定から取得して設定
+	if cfg.GitHub.Repository != "" {
+		parts := strings.Split(cfg.GitHub.Repository, "/")
+		if len(parts) == 2 {
+			p.owner = parts[0]
+			p.repo = parts[1]
+		}
+	}
+
+	// GitHubクライアントが初期化されていない場合は初期化
+	if p.githubClient == nil {
+		tokenProvider := github.NewDefaultTokenProvider()
+		client, err := github.NewClient(tokenProvider, &github.ClientOptions{})
+		if err != nil {
+			return errors.WrapInternal(err, "failed to create GitHub client")
+		}
+		p.githubClient = client
 	}
 
 	return nil

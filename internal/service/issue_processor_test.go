@@ -18,7 +18,7 @@ func TestNewIssueProcessor(t *testing.T) {
 	mockExecutor := &MockWorkflowExecutor{}
 	mockStrategy := domain.NewDefaultPhaseStrategy()
 
-	processor := NewIssueProcessorWithDependencies(mockGithub, mockExecutor, mockStrategy)
+	processor := NewIssueProcessor(mockGithub, mockExecutor, mockStrategy)
 	assert.NotNil(t, processor)
 }
 
@@ -170,7 +170,7 @@ func TestIssueProcessor_ProcessIssue(t *testing.T) {
 				tt.setupMock(mockExecutor)
 			}
 
-			processor := NewIssueProcessorWithDependencies(mockGithub, mockExecutor, mockStrategy)
+			processor := NewIssueProcessor(mockGithub, mockExecutor, mockStrategy)
 
 			ctx := context.Background()
 			cfg := &config.Config{
