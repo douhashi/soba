@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -22,6 +23,11 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Execute
 		cmd := newRootCmd()
 		cmd.SetArgs([]string{"init"})
@@ -30,7 +36,7 @@ func TestInitCommand(t *testing.T) {
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
 
-		err := cmd.Execute()
+		err = cmd.Execute()
 
 		// Assert
 		assert.NoError(t, err)
@@ -53,6 +59,11 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Create existing config file
 		sobaDir := filepath.Join(tempDir, ".soba")
 		require.NoError(t, os.MkdirAll(sobaDir, 0755))
@@ -69,7 +80,7 @@ func TestInitCommand(t *testing.T) {
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
 
-		err := cmd.Execute()
+		err = cmd.Execute()
 
 		// Assert - should return error and not overwrite
 		assert.Error(t, err)
@@ -93,6 +104,11 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Create directory with no write permission
 		sobaDir := filepath.Join(tempDir, ".soba")
 		require.NoError(t, os.MkdirAll(sobaDir, 0555))
@@ -106,7 +122,7 @@ func TestInitCommand(t *testing.T) {
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
 
-		err := cmd.Execute()
+		err = cmd.Execute()
 
 		// Assert
 		assert.Error(t, err)
@@ -120,6 +136,11 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Execute init command
 		cmd := newRootCmd()
 		cmd.SetArgs([]string{"init"})
@@ -128,7 +149,7 @@ func TestInitCommand(t *testing.T) {
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
 
-		err := cmd.Execute()
+		err = cmd.Execute()
 		require.NoError(t, err)
 
 		// Try to load the created config
@@ -155,6 +176,11 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Mock GitHub client
 		mockClient := &MockGitHubClient{
 			CreateLabelCalls: []CreateLabelCall{},
@@ -162,7 +188,7 @@ func TestInitCommand(t *testing.T) {
 		}
 
 		// Execute with mock client (this will create config first)
-		err := runInitWithClient(context.Background(), []string{}, mockClient)
+		err = runInitWithClient(context.Background(), []string{}, mockClient)
 
 		// Assert
 		assert.NoError(t, err)
@@ -185,6 +211,11 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Execute with no config file (should create default config)
 		cmd := newRootCmd()
 		cmd.SetArgs([]string{"init"})
@@ -193,7 +224,7 @@ func TestInitCommand(t *testing.T) {
 		cmd.SetOut(&buf)
 		cmd.SetErr(&buf)
 
-		err := cmd.Execute()
+		err = cmd.Execute()
 
 		// Assert - should succeed even without GitHub configuration
 		assert.NoError(t, err)
@@ -207,13 +238,18 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
+		// Initialize git repository
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
 		// Mock GitHub client that returns errors
 		mockClient := &MockGitHubClient{
 			ListLabelsError: assert.AnError,
 		}
 
 		// Execute with mock client (this will create default config)
-		err := runInitWithClient(context.Background(), []string{}, mockClient)
+		err = runInitWithClient(context.Background(), []string{}, mockClient)
 
 		// Assert - should not fail completely, but log the error
 		assert.NoError(t, err, "Init should not fail due to GitHub API errors")

@@ -1,7 +1,24 @@
 package config
 
+// TemplateOptions holds the options for generating a template
+type TemplateOptions struct {
+	// Repository in format "owner/repo"
+	Repository string
+}
+
 // GenerateTemplate generates the default configuration template for soba
 func GenerateTemplate() string {
+	return GenerateTemplateWithOptions(nil)
+}
+
+// GenerateTemplateWithOptions generates a configuration template with custom options
+func GenerateTemplateWithOptions(opts *TemplateOptions) string {
+	// Default repository
+	repository := "douhashi/soba-cli"
+
+	if opts != nil && opts.Repository != "" {
+		repository = opts.Repository
+	}
 	return `# GitHub settings
 github:
   # Authentication method: 'gh', 'env', or omit for auto-detect
@@ -14,7 +31,7 @@ github:
   # token: ${GITHUB_TOKEN}
 
   # Target repository (format: owner/repo)
-  repository: douhashi/soba-cli
+  repository: ` + repository + `
 
 # Workflow settings
 workflow:
