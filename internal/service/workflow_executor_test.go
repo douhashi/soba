@@ -146,7 +146,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tmux.On("CreatePane", "soba", "issue-456").Return(nil)
 				tmux.On("ResizePanes", "soba", "issue-456").Return(nil)
 				tmux.On("GetFirstPaneIndex", "soba", "issue-456").Return(0, nil)
-				tmux.On("SendCommand", "soba", "issue-456", 0, "cd .git/soba/worktrees/issue-456 && echo Planning").Return(nil)
+				tmux.On("SendCommand", "soba", "issue-456", 0, `cd .git/soba/worktrees/issue-456 && echo "Planning"`).Return(nil)
 			},
 			wantErr: false,
 		},
@@ -167,7 +167,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tmux.On("DeletePane", "soba", "issue-789", 0).Return(nil)
 				tmux.On("CreatePane", "soba", "issue-789").Return(nil)
 				tmux.On("ResizePanes", "soba", "issue-789").Return(nil)
-				tmux.On("SendCommand", "soba", "issue-789", 0, "cd .git/soba/worktrees/issue-789 && echo Implementing").Return(nil)
+				tmux.On("SendCommand", "soba", "issue-789", 0, `cd .git/soba/worktrees/issue-789 && echo "Implementing"`).Return(nil)
 			},
 			wantErr: false,
 		},
@@ -346,7 +346,7 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockTmux.On("CreatePane", "soba", "issue-1").Return(nil)
 	mockTmux.On("ResizePanes", "soba", "issue-1").Return(nil)
 	mockTmux.On("GetFirstPaneIndex", "soba", "issue-1").Return(0, nil)
-	mockTmux.On("SendCommand", "soba", "issue-1", 0, "cd .git/soba/worktrees/issue-1 && soba:plan 1").Return(nil)
+	mockTmux.On("SendCommand", "soba", "issue-1", 0, `cd .git/soba/worktrees/issue-1 && soba:plan "1"`).Return(nil)
 
 	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
 
@@ -385,7 +385,7 @@ func TestWorkflowExecutor_buildCommand(t *testing.T) {
 				Parameter: "123",
 			},
 			issueNumber: 123,
-			expected:    "soba plan 123",
+			expected:    `soba plan "123"`,
 		},
 		{
 			name: "Build command without parameter",
@@ -398,14 +398,44 @@ func TestWorkflowExecutor_buildCommand(t *testing.T) {
 			expected:    "echo Hello World",
 		},
 		{
-			name: "Build command with issue number placeholder",
+			name: "Build command with issue number placeholder (old format)",
 			phaseCommand: config.PhaseCommand{
 				Command:   "gh",
 				Options:   []string{"issue", "view"},
 				Parameter: "{issue_number}",
 			},
 			issueNumber: 789,
-			expected:    "gh issue view 789",
+			expected:    `gh issue view "789"`,
+		},
+		{
+			name: "Build command with {{issue-number}} placeholder",
+			phaseCommand: config.PhaseCommand{
+				Command:   "claude",
+				Options:   []string{"--dangerously-skip-permissions"},
+				Parameter: "/soba:implement {{issue-number}}",
+			},
+			issueNumber: 44,
+			expected:    `claude --dangerously-skip-permissions "/soba:implement 44"`,
+		},
+		{
+			name: "Build command with multiple {{issue-number}} placeholders",
+			phaseCommand: config.PhaseCommand{
+				Command:   "echo",
+				Options:   []string{},
+				Parameter: "Issue {{issue-number}} and {{issue-number}} again",
+			},
+			issueNumber: 100,
+			expected:    `echo "Issue 100 and 100 again"`,
+		},
+		{
+			name: "Build command with parameter should be quoted",
+			phaseCommand: config.PhaseCommand{
+				Command:   "claude",
+				Options:   []string{"--dangerously-skip-permissions"},
+				Parameter: "/soba:plan",
+			},
+			issueNumber: 123,
+			expected:    `claude --dangerously-skip-permissions "/soba:plan"`,
 		},
 	}
 

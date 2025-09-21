@@ -270,8 +270,16 @@ func (e *workflowExecutor) buildCommand(phaseCommand config.PhaseCommand, issueN
 	// パラメータがある場合は追加
 	if phaseCommand.Parameter != "" {
 		param := phaseCommand.Parameter
-		// {issue_number}プレースホルダーを置換
+
+		// {{issue-number}}プレースホルダーを置換
+		param = strings.ReplaceAll(param, "{{issue-number}}", strconv.Itoa(issueNumber))
+
+		// 後方互換性のために{issue_number}も置換
 		param = strings.ReplaceAll(param, "{issue_number}", strconv.Itoa(issueNumber))
+
+		// パラメータ全体をダブルクォートで囲む
+		param = `"` + param + `"`
+
 		parts = append(parts, param)
 	}
 
