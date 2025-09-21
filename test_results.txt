@@ -1,0 +1,12 @@
+?   	github.com/douhashi/soba/cmd/soba	[no test files]
+ok  	github.com/douhashi/soba/internal/cli	2.441s
+ok  	github.com/douhashi/soba/internal/config	0.004s
+ok  	github.com/douhashi/soba/internal/domain	0.004s
+ok  	github.com/douhashi/soba/internal/greeting	0.002s
+ok  	github.com/douhashi/soba/internal/infra	0.002s
+ok  	github.com/douhashi/soba/internal/infra/git	0.148s
+ok  	github.com/douhashi/soba/internal/infra/github	0.816s
+ok  	github.com/douhashi/soba/internal/infra/tmux	1.830s
+ok  	github.com/douhashi/soba/internal/service	0.117s
+ok  	github.com/douhashi/soba/pkg/errors	0.006s
+ok  	github.com/douhashi/soba/pkg/logger	0.005s

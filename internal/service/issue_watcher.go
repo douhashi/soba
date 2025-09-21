@@ -154,8 +154,9 @@ func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess 
 		return nil
 	}
 
-	// soba:todoラベルを持つ場合のみ処理を開始
-	if !w.hasLabel(*issueToProcess, "soba:todo") {
+	// 処理可能なフェーズを持つ場合のみ実際に処理
+	if !w.hasProcessablePhase(*issueToProcess) {
+		w.logger.Debug("Issue does not have processable phase", "issue", issueToProcess.Number)
 		return nil
 	}
 
@@ -406,53 +407,112 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 
 // selectIssueForProcessing はシングルライン処理のため、処理するIssueを選択する
 func (w *IssueWatcher) selectIssueForProcessing(issues []github.Issue) *github.Issue {
-	// 処理中のIssueがある場合はそれを確認
-	if w.currentIssue != nil {
-		for _, issue := range issues {
-			if issue.Number == *w.currentIssue {
-				// 処理完了（merged/closed）していれば、処理中フラグをクリア
-				if w.isIssueCompleted(issue) {
-					w.logger.Info("Issue processing completed", "issue", *w.currentIssue)
-					w.currentIssue = nil
-				} else {
-					// まだ処理中なら何も返さない
-					w.logger.Debug("Issue still in progress", "issue", *w.currentIssue)
-					return nil
-				}
-			}
-		}
-		// 処理中のIssueが見つからない場合もクリア
-		if w.currentIssue != nil {
-			w.logger.Warn("Processing issue not found, clearing flag", "issue", *w.currentIssue)
-			w.currentIssue = nil
-		}
+	// 進行中のIssueをチェック
+	if inProgressIssue := w.checkInProgressIssues(issues); inProgressIssue != nil {
+		return inProgressIssue
 	}
 
-	// soba:todoラベルを持つIssueを番号順でソート
-	var todoIssues []github.Issue
-	for _, issue := range issues {
-		if w.hasLabel(issue, "soba:todo") {
-			todoIssues = append(todoIssues, issue)
-		}
+	// 現在処理中のIssueをチェック
+	if w.checkCurrentIssue(issues) {
+		return nil // 処理中Issueが継続中の場合
 	}
 
-	if len(todoIssues) == 0 {
+	// 処理可能なIssueを収集
+	processableIssues := w.collectProcessableIssues(issues)
+	if len(processableIssues) == 0 {
 		return nil
 	}
 
-	// 番号が最小のIssueを選択
-	minIssue := todoIssues[0]
-	for _, issue := range todoIssues[1:] {
+	// 最小番号のIssueを選択して処理開始
+	return w.selectMinimumIssue(processableIssues)
+}
+
+// checkInProgressIssues は進行中のIssueをチェックし、継続または完了処理を行う
+func (w *IssueWatcher) checkInProgressIssues(issues []github.Issue) *github.Issue {
+	for _, issue := range issues {
+		if w.isInProgressPhase(issue) {
+			if w.isIssueCompleted(issue) {
+				w.logger.Info("Issue processing completed", "issue", issue.Number)
+				w.currentIssue = nil
+			} else {
+				w.currentIssue = &issue.Number
+				w.logger.Debug("Issue still in progress", "issue", issue.Number)
+				return nil // シングルライン処理のため、他のIssueは処理しない
+			}
+		}
+	}
+	return nil
+}
+
+// checkCurrentIssue は現在処理中のIssueの状況をチェックする
+func (w *IssueWatcher) checkCurrentIssue(issues []github.Issue) bool {
+	if w.currentIssue == nil {
+		return false
+	}
+
+	currentIssueNumber := *w.currentIssue
+	for _, issue := range issues {
+		if issue.Number == currentIssueNumber {
+			if w.isIssueCompleted(issue) {
+				w.logger.Info("Issue processing completed", "issue", currentIssueNumber)
+				w.currentIssue = nil
+				return false
+			}
+			w.logger.Debug("Issue still in progress", "issue", currentIssueNumber)
+			return true
+		}
+	}
+
+	// 処理中のIssueが見つからない場合もクリア
+	w.logger.Warn("Processing issue not found, clearing flag", "issue", currentIssueNumber)
+	w.currentIssue = nil
+	return false
+}
+
+// collectProcessableIssues は処理可能なIssueを収集する
+func (w *IssueWatcher) collectProcessableIssues(issues []github.Issue) []github.Issue {
+	var processableIssues []github.Issue
+	for _, issue := range issues {
+		hasTodoLabel := w.hasLabel(issue, "soba:todo")
+		hasProcessable := w.hasProcessablePhase(issue)
+		w.logger.Debug("Checking issue for processing", "issue", issue.Number, "hasTodo", hasTodoLabel, "hasProcessable", hasProcessable)
+
+		if hasTodoLabel || hasProcessable {
+			processableIssues = append(processableIssues, issue)
+		}
+	}
+	return processableIssues
+}
+
+// selectMinimumIssue は最小番号のIssueを選択して処理開始する
+func (w *IssueWatcher) selectMinimumIssue(processableIssues []github.Issue) *github.Issue {
+	minIssue := processableIssues[0]
+	for _, issue := range processableIssues[1:] {
 		if issue.Number < minIssue.Number {
 			minIssue = issue
 		}
 	}
 
-	// 処理開始
+	// 処理開始（まだ処理中のIssueがない場合）
+	if w.currentIssue == nil {
+		issueNumber := minIssue.Number
+		w.currentIssue = &issueNumber
+		w.logger.Info("Selected issue for processing", "issue", minIssue.Number)
+		return &minIssue
+	}
+
+	// 処理中のIssueがある場合は、そのIssueのみ返す
+	for _, issue := range processableIssues {
+		if issue.Number == *w.currentIssue {
+			w.logger.Debug("Continuing processing of current issue", "issue", issue.Number)
+			return &issue
+		}
+	}
+
+	// 処理中のIssueが見つからない場合は新しいIssueを選択
 	issueNumber := minIssue.Number
 	w.currentIssue = &issueNumber
-	w.logger.Info("Selected issue for processing", "issue", minIssue.Number)
-
+	w.logger.Info("Selected new issue for processing", "issue", minIssue.Number)
 	return &minIssue
 }
 
@@ -460,6 +520,48 @@ func (w *IssueWatcher) selectIssueForProcessing(issues []github.Issue) *github.I
 func (w *IssueWatcher) hasLabel(issue github.Issue, labelName string) bool {
 	for _, label := range issue.Labels {
 		if label.Name == labelName {
+			return true
+		}
+	}
+	return false
+}
+
+// hasProcessablePhase はIssueが処理可能なフェーズにあるかチェックする
+func (w *IssueWatcher) hasProcessablePhase(issue github.Issue) bool {
+	if w.phaseStrategy == nil {
+		return false
+	}
+
+	// ラベル名の配列を作成
+	labelNames := make([]string, 0, len(issue.Labels))
+	for _, label := range issue.Labels {
+		labelNames = append(labelNames, label.Name)
+	}
+
+	// 現在のフェーズを判定
+	phase, err := w.phaseStrategy.GetCurrentPhase(labelNames)
+	if err != nil {
+		return false
+	}
+
+	// 処理可能なフェーズかチェック（コマンドが定義されているフェーズまたはQueue）
+	switch phase {
+	case domain.PhaseQueue, domain.PhasePlan, domain.PhaseImplement, domain.PhaseReview, domain.PhaseRevise:
+		return true
+	default:
+		return false
+	}
+}
+
+// isInProgressPhase はIssueが進行中のフェーズにあるかチェックする
+func (w *IssueWatcher) isInProgressPhase(issue github.Issue) bool {
+	// 進行中とみなすラベル
+	inProgressLabels := []string{
+		"soba:planning", "soba:doing", "soba:reviewing", "soba:revising",
+	}
+
+	for _, label := range inProgressLabels {
+		if w.hasLabel(issue, label) {
 			return true
 		}
 	}

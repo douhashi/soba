@@ -10,6 +10,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
+	"github.com/douhashi/soba/pkg/logger"
 )
 
 type MockTmuxClient struct {
@@ -217,7 +218,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tt.setupMocks(mockTmux, mockWorkspace, mockProcessor)
 			}
 
-			executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor)
+			executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
 
 			cfg := &config.Config{
 				Git: config.GitConfig{
@@ -314,6 +315,7 @@ func TestWorkflowExecutor_managePane(t *testing.T) {
 				tmux:           mockTmux,
 				workspace:      mockWorkspace,
 				issueProcessor: mockProcessor,
+				logger:         logger.NewNopLogger(),
 				maxPanes:       tt.maxPanes,
 			}
 
@@ -352,7 +354,7 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockTmux.On("GetFirstPaneIndex", "soba", "issue-1").Return(0, nil)
 	mockTmux.On("SendCommand", "soba", "issue-1", 0, "cd .git/soba/worktrees/issue-1 && soba:plan 1").Return(nil)
 
-	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor)
+	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
 
 	cfg := &config.Config{
 		Git: config.GitConfig{

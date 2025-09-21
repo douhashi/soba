@@ -11,6 +11,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/pkg/logger"
 )
 
 func TestIntegration_FullWorkflow(t *testing.T) {
@@ -97,7 +98,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	// Queueフェーズでラベル更新
 	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:todo", "soba:queued").Return(nil).Once()
 
-	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessorUpdater)
+	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessorUpdater, logger.NewNopLogger())
 	strategy := domain.NewDefaultPhaseStrategy()
 
 	// ProcessorにProcessIssueを実装するためのモックを使用
@@ -174,7 +175,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 		},
 	}
 
-	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor)
+	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
 	strategy := domain.NewDefaultPhaseStrategy()
 	processor := NewIssueProcessor(mockGitHub, executor, strategy)
 
