@@ -12,7 +12,18 @@ import (
 )
 
 // DefaultServiceFactory implements ServiceFactory interface
-type DefaultServiceFactory struct{}
+type DefaultServiceFactory struct {
+	config       *config.Config
+	githubClient builder.GitHubClientInterface
+	tmuxClient   tmux.TmuxClient
+}
+
+// SetDependencies sets the dependencies for the factory
+func (f *DefaultServiceFactory) SetDependencies(cfg *config.Config, githubClient builder.GitHubClientInterface, tmuxClient tmux.TmuxClient) {
+	f.config = cfg
+	f.githubClient = githubClient
+	f.tmuxClient = tmuxClient
+}
 
 // CreateGitWorkspaceManager creates git workspace manager
 func (f *DefaultServiceFactory) CreateGitWorkspaceManager(cfg *config.Config, gitClient interface{}) builder.GitWorkspaceManager {
@@ -154,4 +165,12 @@ func (f *DefaultServiceFactory) CreateDaemonServiceWithDependencies(workDir stri
 
 	service := NewDaemonServiceWithDependencies(workDir, concreteProcessor, concreteWatcher, concretePRWatcher, concreteCleanupService, tmuxClient)
 	return &DaemonServiceAdapter{service.(*daemonService)}
+}
+
+// CreateStatusService creates status service
+func (f *DefaultServiceFactory) CreateStatusService() builder.StatusService {
+	if f.config == nil || f.githubClient == nil || f.tmuxClient == nil {
+		return nil
+	}
+	return NewStatusService(f.config, f.githubClient, f.tmuxClient)
 }

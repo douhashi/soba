@@ -177,6 +177,9 @@ type ResolvedClients struct {
 	SlackNotifier *slack.Notifier // オプショナル
 }
 
+// Clients is an alias for ResolvedClients for compatibility
+type Clients = ResolvedClients
+
 // ResolvedServices holds resolved service dependencies
 type ResolvedServices struct {
 	WorkspaceManager GitWorkspaceManager

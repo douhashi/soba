@@ -62,6 +62,47 @@ type DaemonService interface {
 	Stop(ctx context.Context, repository string) error
 }
 
+// StatusService provides status information about soba
+type StatusService interface {
+	GetStatus(ctx context.Context) (*Status, error)
+}
+
+// Status represents the current status of soba
+type Status struct {
+	Daemon *DaemonStatus `json:"daemon"`
+	Tmux   *TmuxStatus   `json:"tmux"`
+	Issues []IssueStatus `json:"issues"`
+}
+
+// DaemonStatus represents daemon process status
+type DaemonStatus struct {
+	Running bool   `json:"running"`
+	PID     int    `json:"pid,omitempty"`
+	Uptime  string `json:"uptime,omitempty"`
+}
+
+// TmuxStatus represents tmux session status
+type TmuxStatus struct {
+	SessionName string       `json:"session_name"`
+	Windows     []TmuxWindow `json:"windows"`
+}
+
+// TmuxWindow represents a tmux window
+type TmuxWindow struct {
+	Index       int    `json:"index"`
+	Name        string `json:"name"`
+	IssueNumber int    `json:"issue_number,omitempty"`
+	Title       string `json:"title,omitempty"`
+}
+
+// IssueStatus represents an issue's processing status
+type IssueStatus struct {
+	Number int      `json:"number"`
+	Title  string   `json:"title"`
+	Labels []string `json:"labels"`
+	State  string   `json:"state"`
+}
+
 // GitHubClientInterface defines GitHub client interface
 type GitHubClientInterface interface {
 	ListOpenIssues(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)

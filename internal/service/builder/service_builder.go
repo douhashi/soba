@@ -14,6 +14,8 @@ type ServiceBuilder struct {
 	workDir      string
 	logger       logger.Logger
 	errorHandler ErrorHandler
+	resolver     *DependencyResolver
+	clients      *Clients
 }
 
 // NewServiceBuilder creates a new service builder
@@ -81,6 +83,40 @@ func (b *ServiceBuilder) Build() (DaemonService, error) {
 		services.CleanupService,
 		clients.TmuxClient,
 	), nil
+}
+
+// BuildDefault builds with default configuration
+func (b *ServiceBuilder) BuildDefault() error {
+	// Use default config if not provided
+	if b.config == nil {
+		b.config = b.createDefaultConfig()
+	}
+
+	// Resolve dependencies
+	b.resolver = NewDependencyResolver(b.config, b.workDir, b.logger, b.errorHandler)
+
+	clients, err := b.resolver.ResolveClients()
+	if err != nil {
+		return fmt.Errorf("failed to resolve clients: %w", err)
+	}
+	b.clients = clients
+
+	return nil
+}
+
+// GetServiceFactory returns the service factory
+func (b *ServiceBuilder) GetServiceFactory() ServiceFactory {
+	return serviceFactory
+}
+
+// GetClients returns the resolved clients
+func (b *ServiceBuilder) GetClients() *Clients {
+	return b.clients
+}
+
+// GetConfig returns the configuration
+func (b *ServiceBuilder) GetConfig() *config.Config {
+	return b.config
 }
 
 // createDefaultConfig creates default configuration
