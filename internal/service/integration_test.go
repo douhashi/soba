@@ -92,6 +92,8 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 
 	// WorkflowExecutorとIssueProcessorを初期化
 	mockProcessorUpdater := new(MockIssueProcessorUpdater)
+	// Configure呼び出し
+	mockProcessorUpdater.On("Configure", mock.Anything).Return(nil).Once()
 	// Queueフェーズでラベル更新
 	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:todo", "soba:queued").Return(nil).Once()
 
@@ -160,6 +162,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 	mockTmux.On("ResizePanes", "soba", "issue-1").Return(nil).Once()
 
 	// ラベル更新のモック
+	mockProcessor.On("Configure", mock.Anything).Return(nil).Once()
 	mockProcessor.On("UpdateLabels", mock.Anything, 1, "soba:todo", "soba:queued").Return(nil).Once()
 
 	cfg := &config.Config{
@@ -173,7 +176,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 
 	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor)
 	strategy := domain.NewDefaultPhaseStrategy()
-	processor := NewIssueProcessorWithDependencies(mockGitHub, executor, strategy)
+	processor := NewIssueProcessor(mockGitHub, executor, strategy)
 
 	watcher := NewIssueWatcher(mockGitHub, cfg)
 	watcher.SetPhaseStrategy(strategy)

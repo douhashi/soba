@@ -125,3 +125,7 @@ func (m *MockIssueProcessor) ProcessIssue(ctx context.Context, cfg *config.Confi
 	}
 	return nil
 }
+
+func (m *MockIssueProcessor) Configure(cfg *config.Config) error {
+	return nil
+}

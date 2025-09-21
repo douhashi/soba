@@ -34,6 +34,7 @@ type workflowExecutor struct {
 // IssueProcessorUpdater はラベル更新機能を持つインターフェース
 type IssueProcessorUpdater interface {
 	UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error
+	Configure(cfg *config.Config) error
 }
 
 // NewWorkflowExecutor は新しいWorkflowExecutorを作成する
@@ -50,6 +51,12 @@ func NewWorkflowExecutor(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManag
 func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase, strategy domain.PhaseStrategy) error {
 	log := logger.NewNopLogger()
 	log.Info("Executing phase", "issue", issueNumber, "phase", phase)
+
+	// IssueProcessorに設定を適用
+	if err := e.issueProcessor.Configure(cfg); err != nil {
+		log.Error("Failed to configure issue processor", "error", err)
+		return WrapServiceError(err, "failed to configure issue processor")
+	}
 
 	// フェーズ遷移情報を取得
 	transition := domain.GetTransition(phase)
