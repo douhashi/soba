@@ -194,3 +194,92 @@ func (m *MockIssueProcessor) ProcessIssue(ctx context.Context, cfg *config.Confi
 func (m *MockIssueProcessor) Configure(cfg *config.Config) error {
 	return nil
 }
+
+func TestDaemonService_Stop(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupFunc      func(*testing.T, string) *daemonService
+		wantError      bool
+		expectedErrMsg string
+	}{
+		{
+			name: "Stop when daemon is not running",
+			setupFunc: func(t *testing.T, tmpDir string) *daemonService {
+				mockTmux := new(MockTmuxClient)
+				return &daemonService{
+					workDir: tmpDir,
+					tmux:    mockTmux,
+				}
+			},
+			wantError:      true,
+			expectedErrMsg: "daemon is not running",
+		},
+		{
+			name: "Stop with invalid PID in file",
+			setupFunc: func(t *testing.T, tmpDir string) *daemonService {
+				sobaDir := filepath.Join(tmpDir, ".soba")
+				require.NoError(t, os.MkdirAll(sobaDir, 0755))
+
+				// 無効なPIDを含むファイルを作成
+				pidFile := filepath.Join(sobaDir, "soba.pid")
+				require.NoError(t, os.WriteFile(pidFile, []byte("invalid"), 0600))
+
+				mockTmux := new(MockTmuxClient)
+				return &daemonService{
+					workDir: tmpDir,
+					tmux:    mockTmux,
+				}
+			},
+			wantError:      true,
+			expectedErrMsg: "invalid PID in file",
+		},
+		{
+			name: "Stop with non-existent process",
+			setupFunc: func(t *testing.T, tmpDir string) *daemonService {
+				sobaDir := filepath.Join(tmpDir, ".soba")
+				require.NoError(t, os.MkdirAll(sobaDir, 0755))
+
+				// 存在しないPIDを含むファイルを作成（非常に大きいPIDを使用）
+				pidFile := filepath.Join(sobaDir, "soba.pid")
+				require.NoError(t, os.WriteFile(pidFile, []byte("999999"), 0600))
+
+				mockTmux := new(MockTmuxClient)
+				return &daemonService{
+					workDir: tmpDir,
+					tmux:    mockTmux,
+				}
+			},
+			wantError:      true,
+			expectedErrMsg: "process not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			service := tt.setupFunc(t, tmpDir)
+
+			ctx := context.Background()
+			err := service.Stop(ctx, "douhashi/soba")
+
+			if tt.wantError {
+				assert.Error(t, err)
+				if tt.expectedErrMsg != "" {
+					assert.Contains(t, err.Error(), tt.expectedErrMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+
+				// PIDファイルが削除されていることを確認
+				pidFile := filepath.Join(tmpDir, ".soba", "soba.pid")
+				_, err = os.Stat(pidFile)
+				assert.True(t, os.IsNotExist(err))
+			}
+
+			// モックの期待値を検証
+			if mockTmux, ok := service.tmux.(*MockTmuxClient); ok {
+				mockTmux.AssertExpectations(t)
+			}
+		})
+	}
+}

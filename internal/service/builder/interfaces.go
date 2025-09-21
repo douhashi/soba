@@ -59,6 +59,7 @@ type DaemonService interface {
 	StartForeground(ctx context.Context, cfg *config.Config) error
 	StartDaemon(ctx context.Context, cfg *config.Config) error
 	IsRunning() bool
+	Stop(ctx context.Context, repository string) error
 }
 
 // GitHubClientInterface defines GitHub client interface
