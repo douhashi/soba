@@ -65,6 +65,16 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 
 	log.Debug("Updated labels", "issue", issueNumber, "from", transition.From, "to", transition.To)
 
+	// Planフェーズ開始時にworktreeを準備
+	if phase == domain.PhasePlan && e.workspace != nil {
+		log.Info("Preparing workspace for issue", "issue", issueNumber)
+		if err := e.workspace.PrepareWorkspace(issueNumber); err != nil {
+			log.Error("Failed to prepare workspace", "error", err, "issue", issueNumber)
+			return WrapServiceError(err, "failed to prepare workspace")
+		}
+		log.Debug("Workspace prepared", "issue", issueNumber)
+	}
+
 	// tmuxセッション管理
 	sessionName := DefaultSessionName
 	windowName := fmt.Sprintf("issue-%d", issueNumber)
@@ -109,12 +119,23 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 			return NewTmuxManagementError("get pane index", windowName, err.Error())
 		}
 
-		// コマンド送信
-		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, command); err != nil {
-			log.Error("Failed to send command", "error", err, "command", command, "pane", paneIndex)
-			return NewCommandExecutionError(command, string(phase), issueNumber, err.Error())
+		// worktreeディレクトリへ移動してからコマンドを実行
+		if phase == domain.PhasePlan || phase == domain.PhaseImplement || phase == domain.PhaseRevise {
+			worktreeDir := fmt.Sprintf("%s/issue-%d", cfg.Git.WorktreeBasePath, issueNumber)
+			cdCommand := fmt.Sprintf("cd %s && %s", worktreeDir, command)
+			if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, cdCommand); err != nil {
+				log.Error("Failed to send command", "error", err, "command", cdCommand, "pane", paneIndex)
+				return NewCommandExecutionError(cdCommand, string(phase), issueNumber, err.Error())
+			}
+			log.Info("Command sent with worktree cd", "issue", issueNumber, "phase", phase, "worktree", worktreeDir, "command", command)
+		} else {
+			// コマンド送信
+			if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, command); err != nil {
+				log.Error("Failed to send command", "error", err, "command", command, "pane", paneIndex)
+				return NewCommandExecutionError(command, string(phase), issueNumber, err.Error())
+			}
+			log.Info("Command sent", "issue", issueNumber, "phase", phase, "command", command)
 		}
-		log.Info("Command sent", "issue", issueNumber, "phase", phase, "command", command)
 	}
 
 	log.Info("Phase execution completed", "issue", issueNumber, "phase", phase)

@@ -47,16 +47,16 @@ func TestIssueProcessor_Process_EmptyRepository(t *testing.T) {
 
 // MockGitHubClient はテスト用のモックGitHubクライアント
 type MockGitHubClient struct {
-	listIssuesFunc   func(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
-	listIssuesCalled bool
-	addLabelFunc     func(ctx context.Context, owner, repo string, issueNumber int, label string) error
-	removeLabelFunc  func(ctx context.Context, owner, repo string, issueNumber int, label string) error
+	ListOpenIssuesFunc func(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
+	listIssuesCalled   bool
+	addLabelFunc       func(ctx context.Context, owner, repo string, issueNumber int, label string) error
+	removeLabelFunc    func(ctx context.Context, owner, repo string, issueNumber int, label string) error
 }
 
 func (m *MockGitHubClient) ListOpenIssues(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error) {
 	m.listIssuesCalled = true
-	if m.listIssuesFunc != nil {
-		return m.listIssuesFunc(ctx, owner, repo, options)
+	if m.ListOpenIssuesFunc != nil {
+		return m.ListOpenIssuesFunc(ctx, owner, repo, options)
 	}
 	return []github.Issue{}, false, nil
 }
