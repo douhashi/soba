@@ -3,20 +3,23 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/pkg/logger"
 )
 
 // PRWatcher はPR監視機能を提供する
 type PRWatcher struct {
-	client   GitHubClientInterface
-	config   *config.Config
-	interval time.Duration
-	logger   logger.Logger
+	client        GitHubClientInterface
+	config        *config.Config
+	interval      time.Duration
+	slackNotifier *slack.Notifier
+	logger        logger.Logger
 }
 
 // NewPRWatcher は新しいPRWatcherを作成する
@@ -34,6 +37,25 @@ func NewPRWatcher(client GitHubClientInterface, cfg *config.Config) *PRWatcher {
 		config:   cfg,
 		interval: time.Duration(cfg.Workflow.Interval) * time.Second,
 		logger:   log,
+	}
+}
+
+// NewPRWatcherWithSlack はSlack通知付きで新しいPRWatcherを作成する
+func NewPRWatcherWithSlack(client GitHubClientInterface, cfg *config.Config, slackNotifier *slack.Notifier) *PRWatcher {
+	// デフォルト値の設定
+	if cfg.Workflow.Interval == 0 {
+		cfg.Workflow.Interval = 20
+	}
+
+	// ロガーの初期化（テスト環境を考慮）
+	log := logger.NewNopLogger() // デフォルトでNopLogger使用
+
+	return &PRWatcher{
+		client:        client,
+		config:        cfg,
+		interval:      time.Duration(cfg.Workflow.Interval) * time.Second,
+		slackNotifier: slackNotifier,
+		logger:        log,
 	}
 }
 
@@ -207,6 +229,15 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 			"number", pr.Number,
 			"sha", resp.SHA,
 		)
+
+		// Slack通知: PRマージ完了
+		if w.slackNotifier != nil {
+			// PR番号からIssue番号を抽出 (ファイル名パターンから推測)
+			issueNumber := w.extractIssueNumber(pr.Title)
+			if err := w.slackNotifier.NotifyPRMerged(pr.Number, issueNumber); err != nil {
+				w.logger.Error("Failed to send Slack notification", "error", err, "pr", pr.Number, "issue", issueNumber)
+			}
+		}
 	} else {
 		w.logger.Warn("PR merge was not successful",
 			"number", pr.Number,
@@ -229,4 +260,22 @@ func (w *PRWatcher) parseRepository() (string, string) {
 		return "", ""
 	}
 	return parts[0], parts[1]
+}
+
+// extractIssueNumber はPRタイトルからIssue番号を抽出する
+func (w *PRWatcher) extractIssueNumber(title string) int {
+	// PRタイトルから"(#数字)"パターンを探す
+	parts := strings.Split(title, "(#")
+	if len(parts) < 2 {
+		return 0
+	}
+
+	numberPart := strings.Split(parts[1], ")")[0]
+	issueNumber, err := strconv.Atoi(numberPart)
+	if err != nil {
+		w.logger.Debug("Failed to extract issue number from PR title", "title", title, "error", err)
+		return 0
+	}
+
+	return issueNumber
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/internal/service/builder"
 )
@@ -37,6 +38,27 @@ func (f *DefaultServiceFactory) CreateWorkflowExecutor(tmuxClient tmux.TmuxClien
 	if adapter, ok := processor.(*IssueProcessorAdapter); ok {
 		concreteProcessor = adapter.IssueProcessorInterface
 	}
+	return &WorkflowExecutorAdapter{NewWorkflowExecutor(tmuxClient, concreteWorkspace, concreteProcessor)}
+}
+
+// CreateWorkflowExecutorWithSlack creates workflow executor with Slack notifications
+func (f *DefaultServiceFactory) CreateWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace builder.GitWorkspaceManager, processor builder.IssueProcessorUpdater, slackNotifier interface{}) builder.WorkflowExecutor {
+	// Convert builder interface back to concrete type for NewWorkflowExecutor
+	var concreteWorkspace GitWorkspaceManager
+	if adapter, ok := workspace.(*GitWorkspaceManagerAdapter); ok {
+		concreteWorkspace = adapter.GitWorkspaceManager
+	}
+	var concreteProcessor IssueProcessorUpdater
+	if adapter, ok := processor.(*IssueProcessorAdapter); ok {
+		concreteProcessor = adapter.IssueProcessorInterface
+	}
+
+	// Convert slack notifier interface to concrete type
+	if notifier, ok := slackNotifier.(*slack.Notifier); ok {
+		return &WorkflowExecutorAdapter{NewWorkflowExecutorWithSlack(tmuxClient, concreteWorkspace, concreteProcessor, notifier)}
+	}
+
+	// Fallback to regular workflow executor if slack notifier is not available
 	return &WorkflowExecutorAdapter{NewWorkflowExecutor(tmuxClient, concreteWorkspace, concreteProcessor)}
 }
 
@@ -78,6 +100,22 @@ func (f *DefaultServiceFactory) CreatePRWatcher(githubClient builder.GitHubClien
 	if impl, ok := githubClient.(GitHubClientInterface); ok {
 		concreteGithubClient = impl
 	}
+	return &PRWatcherAdapter{NewPRWatcher(concreteGithubClient, cfg)}
+}
+
+// CreatePRWatcherWithSlack creates PR watcher with Slack notifications
+func (f *DefaultServiceFactory) CreatePRWatcherWithSlack(githubClient builder.GitHubClientInterface, cfg *config.Config, slackNotifier interface{}) builder.PRWatcher {
+	var concreteGithubClient GitHubClientInterface
+	if impl, ok := githubClient.(GitHubClientInterface); ok {
+		concreteGithubClient = impl
+	}
+
+	// Convert slack notifier interface to concrete type
+	if notifier, ok := slackNotifier.(*slack.Notifier); ok {
+		return &PRWatcherAdapter{NewPRWatcherWithSlack(concreteGithubClient, cfg, notifier)}
+	}
+
+	// Fallback to regular PR watcher if slack notifier is not available
 	return &PRWatcherAdapter{NewPRWatcher(concreteGithubClient, cfg)}
 }
 
