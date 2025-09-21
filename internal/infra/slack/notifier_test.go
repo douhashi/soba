@@ -2,8 +2,8 @@ package slack
 
 import (
 	"errors"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/douhashi/soba/internal/config"
 )
@@ -14,6 +14,29 @@ type mockSlackClient struct {
 }
 
 func (m *mockSlackClient) SendMessage(message string) error {
+	if m.err != nil {
+		return m.err
+	}
+	m.messages = append(m.messages, message)
+	return nil
+}
+
+type mockSlackClientWithSync struct {
+	mockSlackClient
+	mu sync.Mutex
+	wg *sync.WaitGroup
+}
+
+func (m *mockSlackClientWithSync) SendMessage(message string) error {
+	defer func() {
+		if m.wg != nil {
+			m.wg.Done()
+		}
+	}()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.err != nil {
 		return m.err
 	}
@@ -170,7 +193,10 @@ func TestNotifier_NotifyPRMerged(t *testing.T) {
 }
 
 func TestNotifier_AsyncNotify(t *testing.T) {
-	mockClient := &mockSlackClient{}
+	var wg sync.WaitGroup
+	mockClient := &mockSlackClientWithSync{
+		wg: &wg,
+	}
 	config := &config.SlackConfig{
 		NotificationsEnabled: true,
 	}
@@ -178,16 +204,21 @@ func TestNotifier_AsyncNotify(t *testing.T) {
 	notifier := NewNotifier(mockClient, config)
 
 	// 非同期通知をテスト
+	wg.Add(1) // 1つのメッセージを待機
 	err := notifier.NotifyPhaseStart("plan", 123)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	// 少し待機して非同期処理が完了することを確認
-	time.Sleep(10 * time.Millisecond)
+	// 非同期処理の完了を待機
+	wg.Wait()
 
-	if len(mockClient.messages) != 1 {
-		t.Errorf("Expected 1 message, got %d", len(mockClient.messages))
+	mockClient.mu.Lock()
+	messageCount := len(mockClient.messages)
+	mockClient.mu.Unlock()
+
+	if messageCount != 1 {
+		t.Errorf("Expected 1 message, got %d", messageCount)
 	}
 }
 
