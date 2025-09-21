@@ -11,7 +11,7 @@ import (
 )
 
 // CreateLabel は新しいラベルを作成する
-func (c *Client) CreateLabel(ctx context.Context, owner, repo string, request CreateLabelRequest) (*Label, error) {
+func (c *ClientImpl) CreateLabel(ctx context.Context, owner, repo string, request CreateLabelRequest) (*Label, error) {
 	// リクエストボディの作成
 	reqBody, err := json.Marshal(request)
 	if err != nil {
@@ -52,7 +52,7 @@ func (c *Client) CreateLabel(ctx context.Context, owner, repo string, request Cr
 }
 
 // ListLabels はリポジトリのラベル一覧を取得する
-func (c *Client) ListLabels(ctx context.Context, owner, repo string) ([]Label, error) {
+func (c *ClientImpl) ListLabels(ctx context.Context, owner, repo string) ([]Label, error) {
 	// HTTPリクエストの作成
 	url := fmt.Sprintf("%s/repos/%s/%s/labels", c.baseURL, owner, repo)
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -87,7 +87,7 @@ func (c *Client) ListLabels(ctx context.Context, owner, repo string) ([]Label, e
 }
 
 // AddLabelToIssue はIssueにラベルを追加する
-func (c *Client) AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+func (c *ClientImpl) AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
 	// リクエストボディの作成
 	labels := []string{label}
 	reqBody, err := json.Marshal(labels)
@@ -118,7 +118,7 @@ func (c *Client) AddLabelToIssue(ctx context.Context, owner, repo string, issueN
 }
 
 // RemoveLabelFromIssue はIssueからラベルを削除する
-func (c *Client) RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+func (c *ClientImpl) RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
 	// HTTPリクエストの作成
 	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels/%s", c.baseURL, owner, repo, issueNumber, label)
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
@@ -140,6 +140,36 @@ func (c *Client) RemoveLabelFromIssue(ctx context.Context, owner, repo string, i
 		return nil
 	}
 
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return c.parseErrorResponse(resp)
+	}
+
+	return nil
+}
+
+// UpdateIssueLabels はIssueのラベルを更新する
+func (c *ClientImpl) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
+	// リクエストボディの作成
+	reqBody, err := json.Marshal(labels)
+	if err != nil {
+		return infra.WrapInfraError(err, "failed to marshal request body")
+	}
+
+	// HTTPリクエストの作成
+	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels", c.baseURL, owner, repo, issueNumber)
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(reqBody))
+	if err != nil {
+		return infra.WrapInfraError(err, "failed to create request")
+	}
+
+	// リクエスト実行
+	resp, err := c.doRequest(ctx, req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// レスポンスの処理
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return c.parseErrorResponse(resp)
 	}

@@ -48,7 +48,7 @@ func TestListPullRequests(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := &Client{
+		client := &ClientImpl{
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
@@ -78,7 +78,7 @@ func TestListPullRequests(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := &Client{
+		client := &ClientImpl{
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
@@ -113,7 +113,7 @@ func TestMergePullRequest(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := &Client{
+		client := &ClientImpl{
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
@@ -141,7 +141,7 @@ func TestMergePullRequest(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := &Client{
+		client := &ClientImpl{
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
@@ -181,7 +181,7 @@ func TestGetPullRequest(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := &Client{
+		client := &ClientImpl{
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,

@@ -69,7 +69,7 @@ type PullRequest struct {
 	Number         int        `json:"number"`
 	Title          string     `json:"title"`
 	Body           string     `json:"body"`
-	State          string     `json:"state"`  // open, closed
+	State          string     `json:"state"` // open, closed
 	URL            string     `json:"url"`
 	HTMLURL        string     `json:"html_url"`
 	Labels         []Label    `json:"labels"`
@@ -84,20 +84,20 @@ type PullRequest struct {
 
 // ListPullRequestsOptions はPR一覧取得時のオプション
 type ListPullRequestsOptions struct {
-	State     string    // open, closed, all
-	Labels    []string  // ラベルフィルタ
-	Sort      string    // created, updated
-	Direction string    // asc, desc
+	State     string   // open, closed, all
+	Labels    []string // ラベルフィルタ
+	Sort      string   // created, updated
+	Direction string   // asc, desc
 	Page      int
 	PerPage   int
 }
 
 // MergeRequest はPRマージ時のリクエスト
 type MergeRequest struct {
-	CommitTitle  string `json:"commit_title,omitempty"`
+	CommitTitle   string `json:"commit_title,omitempty"`
 	CommitMessage string `json:"commit_message,omitempty"`
-	SHA          string `json:"sha,omitempty"`
-	MergeMethod  string `json:"merge_method,omitempty"` // merge, squash, rebase
+	SHA           string `json:"sha,omitempty"`
+	MergeMethod   string `json:"merge_method,omitempty"` // merge, squash, rebase
 }
 
 // MergeResponse はPRマージ時のレスポンス

@@ -17,8 +17,8 @@ const (
 	defaultTimeout = 30 * time.Second
 )
 
-// Client はGitHub APIクライアント
-type Client struct {
+// ClientImpl はGitHub APIクライアントの実装
+type ClientImpl struct {
 	httpClient    *http.Client
 	tokenProvider TokenProvider
 	baseURL       string
@@ -33,7 +33,7 @@ type ClientOptions struct {
 }
 
 // NewClient は新しいGitHub APIクライアントを作成する
-func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*Client, error) {
+func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*ClientImpl, error) {
 	if tokenProvider == nil {
 		return nil, infra.NewGitHubAPIError(0, "", "token provider is required")
 	}
@@ -57,7 +57,7 @@ func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*Client, error
 		l = logger.NewNopLogger()
 	}
 
-	return &Client{
+	return &ClientImpl{
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
@@ -68,7 +68,7 @@ func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*Client, error
 }
 
 // doRequest は認証付きHTTPリクエストを実行する
-func (c *Client) doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
+func (c *ClientImpl) doRequest(ctx context.Context, req *http.Request) (*http.Response, error) {
 	// トークンを取得
 	token, err := c.tokenProvider.GetToken(ctx)
 	if err != nil {
@@ -102,7 +102,7 @@ func (c *Client) doRequest(ctx context.Context, req *http.Request) (*http.Respon
 }
 
 // parseErrorResponse はエラーレスポンスを解析する
-func (c *Client) parseErrorResponse(resp *http.Response) error {
+func (c *ClientImpl) parseErrorResponse(resp *http.Response) error {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return infra.NewGitHubAPIError(resp.StatusCode, resp.Request.URL.String(), "failed to read error response")

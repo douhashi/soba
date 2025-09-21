@@ -86,11 +86,11 @@ func TestClient_GetRemoteURL(t *testing.T) {
 
 func TestClient_ParseRepositoryFromURL(t *testing.T) {
 	tests := []struct {
-		name       string
-		url        string
-		wantOwner  string
-		wantRepo   string
-		wantErr    bool
+		name      string
+		url       string
+		wantOwner string
+		wantRepo  string
+		wantErr   bool
 	}{
 		{
 			name:      "HTTPS URL with .git",
@@ -279,58 +279,58 @@ func TestNewClient(t *testing.T) {
 
 func TestClient_CreateWorktree(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		worktreePath string
-		branchName  string
-		baseBranch  string
-		setup       func(t *testing.T, dir string)
-		wantErr     bool
+		branchName   string
+		baseBranch   string
+		setup        func(t *testing.T, dir string)
+		wantErr      bool
 	}{
 		{
-			name:        "Create worktree with new branch",
+			name:         "Create worktree with new branch",
 			worktreePath: "worktree1",
-			branchName:  "feature/test1",
-			baseBranch:  "main",
+			branchName:   "feature/test1",
+			baseBranch:   "main",
 			setup: func(t *testing.T, dir string) {
 				createTestRepository(t, dir)
 			},
 			wantErr: false,
 		},
 		{
-			name:        "Create worktree with default base branch",
+			name:         "Create worktree with default base branch",
 			worktreePath: "worktree2",
-			branchName:  "feature/test2",
-			baseBranch:  "",
+			branchName:   "feature/test2",
+			baseBranch:   "",
 			setup: func(t *testing.T, dir string) {
 				createTestRepository(t, dir)
 			},
 			wantErr: false,
 		},
 		{
-			name:        "Create worktree with non-existent base branch",
+			name:         "Create worktree with non-existent base branch",
 			worktreePath: "worktree3",
-			branchName:  "feature/test3",
-			baseBranch:  "non-existent",
+			branchName:   "feature/test3",
+			baseBranch:   "non-existent",
 			setup: func(t *testing.T, dir string) {
 				createTestRepository(t, dir)
 			},
 			wantErr: true,
 		},
 		{
-			name:        "Empty worktree path",
+			name:         "Empty worktree path",
 			worktreePath: "",
-			branchName:  "feature/test4",
-			baseBranch:  "main",
+			branchName:   "feature/test4",
+			baseBranch:   "main",
 			setup: func(t *testing.T, dir string) {
 				createTestRepository(t, dir)
 			},
 			wantErr: true,
 		},
 		{
-			name:        "Empty branch name",
+			name:         "Empty branch name",
 			worktreePath: "worktree5",
-			branchName:  "",
-			baseBranch:  "main",
+			branchName:   "",
+			baseBranch:   "main",
 			setup: func(t *testing.T, dir string) {
 				createTestRepository(t, dir)
 			},
@@ -376,13 +376,13 @@ func TestClient_CreateWorktree(t *testing.T) {
 
 func TestClient_RemoveWorktree(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		worktreePath string
-		setup       func(t *testing.T, dir string, worktreePath string) bool
-		wantErr     bool
+		setup        func(t *testing.T, dir string, worktreePath string) bool
+		wantErr      bool
 	}{
 		{
-			name:        "Remove existing worktree",
+			name:         "Remove existing worktree",
 			worktreePath: "worktree-to-remove",
 			setup: func(t *testing.T, dir string, worktreePath string) bool {
 				createTestRepository(t, dir)
@@ -394,7 +394,7 @@ func TestClient_RemoveWorktree(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "Remove non-existent worktree",
+			name:         "Remove non-existent worktree",
 			worktreePath: "non-existent",
 			setup: func(t *testing.T, dir string, worktreePath string) bool {
 				createTestRepository(t, dir)
@@ -403,7 +403,7 @@ func TestClient_RemoveWorktree(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:        "Empty worktree path",
+			name:         "Empty worktree path",
 			worktreePath: "",
 			setup: func(t *testing.T, dir string, worktreePath string) bool {
 				createTestRepository(t, dir)
@@ -453,9 +453,9 @@ func TestClient_RemoveWorktree(t *testing.T) {
 
 func TestClient_UpdateBaseBranch(t *testing.T) {
 	tests := []struct {
-		name   string
-		branch string
-		setup  func(t *testing.T, dir string)
+		name    string
+		branch  string
+		setup   func(t *testing.T, dir string)
 		wantErr bool
 	}{
 		{
@@ -524,13 +524,13 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 
 func TestClient_WorktreeExists(t *testing.T) {
 	tests := []struct {
-		name        string
+		name         string
 		worktreePath string
-		setup       func(t *testing.T, dir string) string
-		want        bool
+		setup        func(t *testing.T, dir string) string
+		want         bool
 	}{
 		{
-			name:        "Existing worktree",
+			name:         "Existing worktree",
 			worktreePath: "existing-worktree",
 			setup: func(t *testing.T, dir string) string {
 				createTestRepository(t, dir)
@@ -542,7 +542,7 @@ func TestClient_WorktreeExists(t *testing.T) {
 			want: true,
 		},
 		{
-			name:        "Non-existent worktree",
+			name:         "Non-existent worktree",
 			worktreePath: "non-existent",
 			setup: func(t *testing.T, dir string) string {
 				createTestRepository(t, dir)
@@ -551,7 +551,7 @@ func TestClient_WorktreeExists(t *testing.T) {
 			want: false,
 		},
 		{
-			name:        "Empty path",
+			name:         "Empty path",
 			worktreePath: "",
 			setup: func(t *testing.T, dir string) string {
 				createTestRepository(t, dir)
