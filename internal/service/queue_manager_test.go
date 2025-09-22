@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // MockQueueGitHubClient はテスト用のモッククライアント
@@ -139,7 +139,7 @@ func TestQueueManager_EnqueueNextIssue(t *testing.T) {
 			tt.setupMock(mockClient)
 
 			qm := NewQueueManager(mockClient, "owner", "repo")
-			qm.SetLogger(logger.NewNopLogger())
+			qm.SetLogger(logging.NewMockLogger())
 
 			err := qm.EnqueueNextIssue(context.Background(), tt.issues)
 
@@ -156,7 +156,7 @@ func TestQueueManager_EnqueueNextIssue(t *testing.T) {
 
 func TestQueueManager_hasActiveTask(t *testing.T) {
 	qm := &QueueManager{
-		logger: logger.NewNopLogger(),
+		logger: logging.NewMockLogger(),
 	}
 
 	tests := []struct {
@@ -218,7 +218,7 @@ func TestQueueManager_hasActiveTask(t *testing.T) {
 
 func TestQueueManager_collectTodoIssues(t *testing.T) {
 	qm := &QueueManager{
-		logger: logger.NewNopLogger(),
+		logger: logging.NewMockLogger(),
 	}
 
 	issues := []github.Issue{
@@ -239,7 +239,7 @@ func TestQueueManager_collectTodoIssues(t *testing.T) {
 
 func TestQueueManager_selectMinimumIssue(t *testing.T) {
 	qm := &QueueManager{
-		logger: logger.NewNopLogger(),
+		logger: logging.NewMockLogger(),
 	}
 
 	issues := []github.Issue{

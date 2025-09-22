@@ -13,7 +13,7 @@ import (
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/internal/service/builder"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // statusService implements builder.StatusService
@@ -34,8 +34,8 @@ func NewStatusService(cfg *config.Config, githubClient builder.GitHubClientInter
 
 // GetStatus returns the current status of soba
 func (s *statusService) GetStatus(ctx context.Context) (*builder.Status, error) {
-	log := logger.GetLogger()
-	log.Debug("Getting soba status")
+	log := logging.NewMockLogger()
+	log.Debug(ctx, "Getting soba status")
 
 	status := &builder.Status{}
 
@@ -48,7 +48,7 @@ func (s *statusService) GetStatus(ctx context.Context) (*builder.Status, error) 
 	// Get issues status
 	issues, err := s.getIssuesStatus(ctx)
 	if err != nil {
-		log.Error("Failed to get issues status", "error", err)
+		log.Error(ctx, "Failed to get issues status", logging.Field{Key: "error", Value: err.Error()})
 		// Continue even if we can't get issues
 	} else {
 		status.Issues = issues
@@ -59,7 +59,7 @@ func (s *statusService) GetStatus(ctx context.Context) (*builder.Status, error) 
 
 // getDaemonStatus checks the daemon process status
 func (s *statusService) getDaemonStatus() *builder.DaemonStatus {
-	log := logger.GetLogger()
+	log := logging.NewMockLogger()
 	status := &builder.DaemonStatus{
 		Running: false,
 	}
@@ -68,28 +68,31 @@ func (s *statusService) getDaemonStatus() *builder.DaemonStatus {
 	pidFile := ".soba/soba.pid"
 	pidData, err := os.ReadFile(pidFile)
 	if err != nil {
-		log.Debug("PID file not found", "path", pidFile)
+		log.Debug(context.Background(), "PID file not found", logging.Field{Key: "path", Value: pidFile})
 		return status
 	}
 
 	// Parse PID
 	pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
 	if err != nil {
-		log.Error("Invalid PID in file", "content", string(pidData))
+		log.Error(context.Background(), "Invalid PID in file", logging.Field{Key: "content", Value: string(pidData)})
 		return status
 	}
 
 	// Check if process is running
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		log.Debug("Process not found", "pid", pid)
+		log.Debug(context.Background(), "Process not found", logging.Field{Key: "pid", Value: pid})
 		return status
 	}
 
 	// Send signal 0 to check if process exists
 	err = process.Signal(syscall.Signal(0))
 	if err != nil {
-		log.Debug("Process not running", "pid", pid, "error", err)
+		log.Debug(context.Background(), "Process not running",
+			logging.Field{Key: "pid", Value: pid},
+			logging.Field{Key: "error", Value: err.Error()},
+		)
 		return status
 	}
 
@@ -143,7 +146,7 @@ func formatElapsedTime(etime string) string {
 
 // getTmuxStatus gets the tmux session status
 func (s *statusService) getTmuxStatus() *builder.TmuxStatus {
-	log := logger.GetLogger()
+	log := logging.NewMockLogger()
 
 	// Generate session name using existing logic
 	sessionName := s.generateSessionName()
@@ -156,7 +159,7 @@ func (s *statusService) getTmuxStatus() *builder.TmuxStatus {
 	// Check if session exists
 	exists := s.tmuxClient.SessionExists(sessionName)
 	if !exists {
-		log.Debug("Tmux session not found", "name", sessionName)
+		log.Debug(context.Background(), "Tmux session not found", logging.Field{Key: "name", Value: sessionName})
 		return status
 	}
 
@@ -199,8 +202,8 @@ func (s *statusService) getOwnerAndRepo() (string, string) {
 
 // getIssuesStatus gets the status of issues with soba labels
 func (s *statusService) getIssuesStatus(ctx context.Context) ([]builder.IssueStatus, error) {
-	log := logger.GetLogger()
-	log.Debug("Getting issues status")
+	log := logging.NewMockLogger()
+	log.Debug(ctx, "Getting issues status")
 
 	var statuses []builder.IssueStatus
 
@@ -247,6 +250,6 @@ func (s *statusService) getIssuesStatus(ctx context.Context) ([]builder.IssueSta
 		}
 	}
 
-	log.Debug("Found issues with soba labels", "count", len(statuses))
+	log.Debug(ctx, "Found issues with soba labels", logging.Field{Key: "count", Value: len(statuses)})
 	return statuses, nil
 }

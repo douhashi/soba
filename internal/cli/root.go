@@ -2,12 +2,12 @@
 package cli
 
 import (
-	"log/slog"
+	"context"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 var (
@@ -55,18 +55,23 @@ func init() {
 }
 
 func initConfig() {
-	// Initialize logger with appropriate level
-	logLevel := slog.LevelInfo
+
+	// Initialize logging factory
+	logConfig := logging.Config{
+		Level:  "info",
+		Format: "text",
+	}
 	if verbose {
-		logLevel = slog.LevelDebug
+		logConfig.Level = "debug"
 	}
 
-	logger.Init(logger.Config{
-		Environment: "development",
-		Level:       logLevel,
-	})
+	factory, err := logging.NewFactory(logConfig)
+	if err != nil {
+		// Fallback to mock logger if initialization fails
+		factory = &logging.Factory{}
+	}
 
-	log := logger.GetLogger()
+	log := factory.CreateComponentLogger("cli")
 
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
@@ -79,8 +84,8 @@ func initConfig() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
-		log.Debug("Using config file", "path", viper.ConfigFileUsed())
+		log.Debug(context.Background(), "Using config file", logging.Field{Key: "path", Value: viper.ConfigFileUsed()})
 	} else if verbose {
-		log.Debug("No config file found", "error", err)
+		log.Debug(context.Background(), "No config file found", logging.Field{Key: "error", Value: err.Error()})
 	}
 }

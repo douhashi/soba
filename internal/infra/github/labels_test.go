@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // MockTokenProvider はテスト用のTokenProvider
@@ -117,7 +117,7 @@ func TestClient_CreateLabel(t *testing.T) {
 			tokenProvider := &MockTokenProvider{token: "test-token"}
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
-				Logger:  logger.NewNopLogger(),
+				Logger:  logging.NewMockLogger(),
 			})
 			require.NoError(t, err)
 
@@ -217,7 +217,7 @@ func TestClient_ListLabels(t *testing.T) {
 			tokenProvider := &MockTokenProvider{token: "test-token"}
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
-				Logger:  logger.NewNopLogger(),
+				Logger:  logging.NewMockLogger(),
 			})
 			require.NoError(t, err)
 

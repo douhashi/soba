@@ -10,7 +10,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/slack"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // PRWatcher はPR監視機能を提供する
@@ -19,7 +19,7 @@ type PRWatcher struct {
 	config        *config.Config
 	interval      time.Duration
 	slackNotifier *slack.Notifier
-	logger        logger.Logger
+	logger        logging.Logger
 }
 
 // NewPRWatcher は新しいPRWatcherを作成する
@@ -30,7 +30,7 @@ func NewPRWatcher(client GitHubClientInterface, cfg *config.Config) *PRWatcher {
 	}
 
 	// ロガーの初期化（テスト環境を考慮）
-	log := logger.NewNopLogger() // デフォルトでNopLogger使用
+	log := logging.NewMockLogger() // デフォルトでMockLogger使用
 
 	return &PRWatcher{
 		client:   client,
@@ -48,7 +48,7 @@ func NewPRWatcherWithSlack(client GitHubClientInterface, cfg *config.Config, sla
 	}
 
 	// ロガーの初期化（テスト環境を考慮）
-	log := logger.NewNopLogger() // デフォルトでNopLogger使用
+	log := logging.NewMockLogger() // デフォルトでMockLogger使用
 
 	return &PRWatcher{
 		client:        client,
@@ -60,30 +60,30 @@ func NewPRWatcherWithSlack(client GitHubClientInterface, cfg *config.Config, sla
 }
 
 // SetLogger はロガーを設定する（運用時用）
-func (w *PRWatcher) SetLogger(log logger.Logger) {
+func (w *PRWatcher) SetLogger(log logging.Logger) {
 	w.logger = log
 }
 
 // Start はPR監視を開始する
 func (w *PRWatcher) Start(ctx context.Context) error {
-	w.logger.Info("Starting PR watcher", "interval", w.interval)
+	w.logger.Info(ctx, "Starting PR watcher", logging.Field{Key: "interval", Value: w.interval})
 
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
 	// 最初に一度実行
 	if err := w.watchOnce(ctx); err != nil {
-		w.logger.Error("Initial watch failed", "error", err)
+		w.logger.Error(ctx, "Initial watch failed", logging.Field{Key: "error", Value: err.Error()})
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			w.logger.Info("PR watcher stopped due to context cancellation")
+			w.logger.Info(ctx, "PR watcher stopped due to context cancellation")
 			return nil
 		case <-ticker.C:
 			if err := w.watchOnce(ctx); err != nil {
-				w.logger.Error("Watch cycle failed", "error", err)
+				w.logger.Error(ctx, "Watch cycle failed", logging.Field{Key: "error", Value: err.Error()})
 			}
 		}
 	}
@@ -91,27 +91,27 @@ func (w *PRWatcher) Start(ctx context.Context) error {
 
 // watchOnce は一度だけPR監視を実行する
 func (w *PRWatcher) watchOnce(ctx context.Context) error {
-	w.logger.Debug("Starting PR watch cycle")
+	w.logger.Debug(ctx, "Starting PR watch cycle")
 
 	prs, err := w.fetchOpenPullRequests(ctx)
 	if err != nil {
 		return err
 	}
 
-	w.logger.Debug("Fetched pull requests", "count", len(prs))
+	w.logger.Debug(ctx, "Fetched pull requests", logging.Field{Key: "count", Value: len(prs)})
 
 	// soba:lgtmラベルが付いたPRを処理
 	for _, pr := range prs {
 		if w.hasLGTMLabel(pr) {
-			w.logger.Info("Found PR with soba:lgtm label",
-				"number", pr.Number,
-				"title", pr.Title,
+			w.logger.Info(ctx, "Found PR with soba:lgtm label",
+				logging.Field{Key: "number", Value: pr.Number},
+				logging.Field{Key: "title", Value: pr.Title},
 			)
 
 			if err := w.mergePullRequest(ctx, pr); err != nil {
-				w.logger.Error("Failed to merge PR",
-					"number", pr.Number,
-					"error", err,
+				w.logger.Error(ctx, "Failed to merge PR",
+					logging.Field{Key: "number", Value: pr.Number},
+					logging.Field{Key: "error", Value: err.Error()},
 				)
 				// エラーが発生してもサービスは継続
 				continue
@@ -137,10 +137,10 @@ func (w *PRWatcher) fetchOpenPullRequests(ctx context.Context) ([]github.PullReq
 
 	prs, _, err := w.client.ListPullRequests(ctx, owner, repo, opts)
 	if err != nil {
-		w.logger.Error("Failed to fetch pull requests from GitHub",
-			"error", err,
-			"owner", owner,
-			"repo", repo,
+		w.logger.Error(ctx, "Failed to fetch pull requests from GitHub",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "owner", Value: owner},
+			logging.Field{Key: "repo", Value: repo},
 		)
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 
 	// mergeableがnullの場合は、GitHub APIが計算中の可能性があるため、個別にPR情報を再取得
 	if pr.MergeableState == "" {
-		w.logger.Info("PR mergeable state is unknown, fetching detailed PR info",
-			"number", pr.Number,
+		w.logger.Info(ctx, "PR mergeable state is unknown, fetching detailed PR info",
+			logging.Field{Key: "number", Value: pr.Number},
 		)
 
 		// PR情報を個別に取得（最大3回リトライ）
@@ -177,10 +177,10 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 		for i := 0; i < 3; i++ {
 			detailedPR, _, err = w.client.GetPullRequest(ctx, owner, repo, pr.Number)
 			if err != nil {
-				w.logger.Error("Failed to get detailed PR info",
-					"number", pr.Number,
-					"attempt", i+1,
-					"error", err,
+				w.logger.Error(ctx, "Failed to get detailed PR info",
+					logging.Field{Key: "number", Value: pr.Number},
+					logging.Field{Key: "attempt", Value: i + 1},
+					logging.Field{Key: "error", Value: err.Error()},
 				)
 				return err
 			}
@@ -193,9 +193,9 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 
 			// まだ計算中の場合は少し待つ
 			if i < 2 {
-				w.logger.Debug("PR mergeable state still unknown, waiting...",
-					"number", pr.Number,
-					"attempt", i+1,
+				w.logger.Debug(ctx, "PR mergeable state still unknown, waiting...",
+					logging.Field{Key: "number", Value: pr.Number},
+					logging.Field{Key: "attempt", Value: i + 1},
 				)
 				time.Sleep(2 * time.Second)
 			}
@@ -204,10 +204,10 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 
 	// マージ可能な状態かチェック
 	if !pr.Mergeable || pr.MergeableState != "clean" {
-		w.logger.Info("PR is not in mergeable state",
-			"number", pr.Number,
-			"mergeable", pr.Mergeable,
-			"mergeableState", pr.MergeableState,
+		w.logger.Info(ctx, "PR is not in mergeable state",
+			logging.Field{Key: "number", Value: pr.Number},
+			logging.Field{Key: "mergeable", Value: pr.Mergeable},
+			logging.Field{Key: "mergeableState", Value: pr.MergeableState},
 		)
 		return nil // エラーではなくスキップ
 	}
@@ -225,9 +225,9 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 	}
 
 	if resp.Merged {
-		w.logger.Info("Successfully merged PR",
-			"number", pr.Number,
-			"sha", resp.SHA,
+		w.logger.Info(ctx, "Successfully merged PR",
+			logging.Field{Key: "number", Value: pr.Number},
+			logging.Field{Key: "sha", Value: resp.SHA},
 		)
 
 		// Slack通知: PRマージ完了
@@ -235,13 +235,17 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 			// PR番号からIssue番号を抽出 (ファイル名パターンから推測)
 			issueNumber := w.extractIssueNumber(pr.Title)
 			if err := w.slackNotifier.NotifyPRMerged(pr.Number, issueNumber); err != nil {
-				w.logger.Error("Failed to send Slack notification", "error", err, "pr", pr.Number, "issue", issueNumber)
+				w.logger.Error(ctx, "Failed to send Slack notification",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "pr", Value: pr.Number},
+					logging.Field{Key: "issue", Value: issueNumber},
+				)
 			}
 		}
 	} else {
-		w.logger.Warn("PR merge was not successful",
-			"number", pr.Number,
-			"message", resp.Message,
+		w.logger.Warn(ctx, "PR merge was not successful",
+			logging.Field{Key: "number", Value: pr.Number},
+			logging.Field{Key: "message", Value: resp.Message},
 		)
 	}
 
@@ -253,9 +257,9 @@ func (w *PRWatcher) parseRepository() (string, string) {
 	repo := w.config.GitHub.Repository
 	parts := strings.Split(repo, "/")
 	if len(parts) != 2 {
-		w.logger.Error("Invalid repository format",
-			"repository", repo,
-			"expected_format", "owner/repo",
+		w.logger.Error(context.Background(), "Invalid repository format",
+			logging.Field{Key: "repository", Value: repo},
+			logging.Field{Key: "expected_format", Value: "owner/repo"},
 		)
 		return "", ""
 	}
@@ -273,7 +277,10 @@ func (w *PRWatcher) extractIssueNumber(title string) int {
 	numberPart := strings.Split(parts[1], ")")[0]
 	issueNumber, err := strconv.Atoi(numberPart)
 	if err != nil {
-		w.logger.Debug("Failed to extract issue number from PR title", "title", title, "error", err)
+		w.logger.Debug(context.Background(), "Failed to extract issue number from PR title",
+			logging.Field{Key: "title", Value: title},
+			logging.Field{Key: "error", Value: err.Error()},
+		)
 		return 0
 	}
 

@@ -10,7 +10,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // MockIntegrationGitHubClient は統合テスト用のモック
@@ -91,11 +91,11 @@ func TestQueueIntegration_TodoToQueuedTransition(t *testing.T) {
 	// IssueWatcherとQueueManagerを設定
 	watcher := NewIssueWatcher(mockGitHub, cfg)
 	queueManager := NewQueueManager(mockGitHub, "owner", "repo")
-	queueManager.SetLogger(logger.NewNopLogger())
+	queueManager.SetLogger(logging.NewMockLogger())
 
 	watcher.SetQueueManager(queueManager)
 	watcher.SetWorkflowExecutor(mockExecutor)
-	watcher.SetLogger(logger.NewNopLogger())
+	watcher.SetLogger(logging.NewMockLogger())
 
 	// テストデータ：soba:todoラベルのIssue
 	todoIssues := []github.Issue{
@@ -149,7 +149,7 @@ func TestQueueIntegration_QueuedToPlanExecution(t *testing.T) {
 	// IssueWatcherを設定
 	watcher := NewIssueWatcher(mockGitHub, cfg)
 	watcher.SetWorkflowExecutor(mockExecutor)
-	watcher.SetLogger(logger.NewNopLogger())
+	watcher.SetLogger(logging.NewMockLogger())
 
 	// テストデータ：soba:queuedラベルのIssue
 	queuedIssues := []github.Issue{
@@ -199,7 +199,7 @@ func TestQueueIntegration_NoLoopWithQueued(t *testing.T) {
 	watcher.SetProcessor(mockProcessor)
 	watcher.SetWorkflowExecutor(mockExecutor)
 	watcher.SetQueueManager(NewQueueManager(mockGitHub, "owner", "repo"))
-	watcher.SetLogger(logger.NewNopLogger())
+	watcher.SetLogger(logging.NewMockLogger())
 
 	// テストデータ：soba:queuedラベルのIssue
 	queuedIssues := []github.Issue{

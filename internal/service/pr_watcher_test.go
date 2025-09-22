@@ -10,7 +10,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // MockGitHubClientForPR はPR Watcher用のモッククライアント
@@ -146,7 +146,7 @@ func TestWatchOnce(t *testing.T) {
 		}
 
 		watcher := NewPRWatcher(mockClient, cfg)
-		watcher.SetLogger(logger.NewNopLogger())
+		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
 		err := watcher.watchOnce(ctx)
@@ -200,7 +200,7 @@ func TestWatchOnce(t *testing.T) {
 		}
 
 		watcher := NewPRWatcher(mockClient, cfg)
-		watcher.SetLogger(logger.NewNopLogger())
+		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
 		err := watcher.watchOnce(ctx)
@@ -243,7 +243,7 @@ func TestWatchOnce(t *testing.T) {
 		}
 
 		watcher := NewPRWatcher(mockClient, cfg)
-		watcher.SetLogger(logger.NewNopLogger())
+		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
 		err := watcher.watchOnce(ctx)
@@ -281,7 +281,7 @@ func TestWatchOnce(t *testing.T) {
 		}
 
 		watcher := NewPRWatcher(mockClient, cfg)
-		watcher.SetLogger(logger.NewNopLogger())
+		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
 		err := watcher.watchOnce(ctx)
@@ -311,7 +311,7 @@ func TestParseRepository(t *testing.T) {
 			},
 		}
 		watcher := NewPRWatcher(&MockGitHubClientForPR{}, cfg)
-		watcher.SetLogger(logger.NewNopLogger())
+		watcher.SetLogger(logging.NewMockLogger())
 
 		owner, repo := watcher.parseRepository()
 		assert.Equal(t, "", owner)

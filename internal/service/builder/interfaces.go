@@ -30,7 +30,6 @@ type IssueProcessorUpdater interface {
 // WorkflowExecutor executes workflow phases
 type WorkflowExecutor interface {
 	ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase interface{}) error
-	SetIssueProcessor(processor IssueProcessorUpdater)
 }
 
 // IssueWatcher watches for issue changes
@@ -46,6 +45,16 @@ type IssueWatcher interface {
 type PRWatcher interface {
 	Start(ctx context.Context) error
 	SetLogger(logger interface{})
+}
+
+// ErrorHandler handles various errors in the system
+type ErrorHandler interface {
+	HandleGitHubClientError(err error) (GitHubClientInterface, error)
+	HandleGitClientError(workDir string, err error) (*MockGitClient, error)
+	ShouldContinueOnError(component string, err error) bool
+	LogError(ctx context.Context, msg string, err error)
+	LogWarning(ctx context.Context, msg string)
+	LogInfo(ctx context.Context, msg string)
 }
 
 // ClosedIssueCleanupService cleans up closed issues
@@ -101,6 +110,15 @@ type IssueStatus struct {
 	Title  string   `json:"title"`
 	Labels []string `json:"labels"`
 	State  string   `json:"state"`
+}
+
+// GitClientInterface defines Git client interface
+type GitClientInterface interface {
+	GetCurrentBranch() (string, error)
+	CreateBranch(branchName string, baseBranch string) error
+	SwitchBranch(branchName string) error
+	DeleteBranch(branchName string, force bool) error
+	BranchExists(branchName string) (bool, error)
 }
 
 // GitHubClientInterface defines GitHub client interface

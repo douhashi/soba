@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/douhashi/soba/internal/infra"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // RetryOptions はリトライの設定
@@ -18,7 +18,7 @@ type RetryOptions struct {
 	InitialWait time.Duration // 初回待機時間
 	MaxWait     time.Duration // 最大待機時間
 	Multiplier  float64       // 待機時間の倍率
-	Logger      logger.Logger // ロガー
+	Logger      logging.Logger // ロガー
 }
 
 // デフォルトのリトライ設定
@@ -32,7 +32,7 @@ var defaultRetryOptions = &RetryOptions{
 // RetryableClient はリトライ機能を持つHTTPクライアント
 type RetryableClient struct {
 	options *RetryOptions
-	logger  logger.Logger
+	logger  logging.Logger
 }
 
 // NewRetryableClient は新しいRetryableClientを作成する
@@ -53,7 +53,9 @@ func NewRetryableClient(opts *RetryOptions) *RetryableClient {
 
 	l := opts.Logger
 	if l == nil {
-		l = logger.NewNopLogger()
+		// デフォルトロガーの作成
+		factory, _ := logging.NewFactory(logging.Config{})
+		l = factory.CreateComponentLogger("github-retry")
 	}
 
 	return &RetryableClient{
@@ -87,9 +89,9 @@ func (r *RetryableClient) DoWithRetry(ctx context.Context, fn func() (*http.Resp
 
 		// 最大リトライ回数に達した場合
 		if attempt >= r.options.MaxRetries {
-			r.logger.Debug("Max retries reached",
-				"attempt", attempt+1,
-				"max_retries", r.options.MaxRetries,
+			r.logger.Debug(ctx, "Max retries reached",
+				logging.Field{Key: "attempt", Value: attempt + 1},
+				logging.Field{Key: "max_retries", Value: r.options.MaxRetries},
 			)
 			break
 		}
@@ -99,17 +101,17 @@ func (r *RetryableClient) DoWithRetry(ctx context.Context, fn func() (*http.Resp
 		if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
 			// レート制限の場合は Reset 時刻まで待機
 			waitTime = getRateLimitReset(resp)
-			r.logger.Info("Rate limited, waiting until reset",
-				"wait_seconds", waitTime.Seconds(),
-				"attempt", attempt+1,
+			r.logger.Info(ctx, "Rate limited, waiting until reset",
+				logging.Field{Key: "wait_seconds", Value: waitTime.Seconds()},
+				logging.Field{Key: "attempt", Value: attempt + 1},
 			)
 		} else {
 			// 指数バックオフ
 			waitTime = calculateBackoff(attempt, r.options)
-			r.logger.Debug("Retrying after backoff",
-				"wait_seconds", waitTime.Seconds(),
-				"attempt", attempt+1,
-				"status_code", getStatusCode(resp),
+			r.logger.Debug(ctx, "Retrying after backoff",
+				logging.Field{Key: "wait_seconds", Value: waitTime.Seconds()},
+				logging.Field{Key: "attempt", Value: attempt + 1},
+				logging.Field{Key: "status_code", Value: getStatusCode(resp)},
 			)
 		}
 

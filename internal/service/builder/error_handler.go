@@ -1,128 +1,78 @@
 package builder
 
 import (
-	"github.com/douhashi/soba/pkg/logger"
+	"context"
+	"fmt"
+
+	"github.com/douhashi/soba/pkg/logging"
 )
 
-// ErrorHandler defines strategy for handling initialization errors
-type ErrorHandler interface {
-	HandleGitClientError(workDir string, err error) (*MockGitClient, error)
-	HandleGitHubClientError(err error) (GitHubClientInterface, error)
-	ShouldContinueOnError(component string, err error) bool
-}
-
-// ProductionErrorHandler provides fallback strategies for production
+// ProductionErrorHandler implements production error handling with new logging
 type ProductionErrorHandler struct {
-	logger logger.Logger
+	logger logging.Logger
 }
 
-// NewProductionErrorHandler creates production error handler
-func NewProductionErrorHandler(log logger.Logger) ErrorHandler {
-	return &ProductionErrorHandler{logger: log}
+// NewProductionErrorHandler creates a new production error handler with new logging
+func NewProductionErrorHandler(logger logging.Logger) ErrorHandler {
+	return &ProductionErrorHandler{
+		logger: logger,
+	}
 }
 
-// HandleGitClientError provides fallback for git client creation failure
+// HandleGitHubClientError handles GitHub client initialization errors
+func (h *ProductionErrorHandler) HandleGitHubClientError(err error) (GitHubClientInterface, error) {
+	ctx := context.Background()
+	h.logger.Error(ctx, "GitHub client initialization failed",
+		logging.Field{Key: "error", Value: err.Error()},
+	)
+	return nil, fmt.Errorf("GitHub client required: %w", err)
+}
+
+// HandleGitClientError handles Git client initialization errors
 func (h *ProductionErrorHandler) HandleGitClientError(workDir string, err error) (*MockGitClient, error) {
-	h.logger.Warn("Git client initialization failed, using mock", "error", err)
+	ctx := context.Background()
+	h.logger.Warn(ctx, "Git client initialization failed, using mock",
+		logging.Field{Key: "workDir", Value: workDir},
+		logging.Field{Key: "error", Value: err.Error()},
+	)
+	// Return a mock git client for non-critical operations
 	return NewMockGitClient(), nil
 }
 
-// HandleGitHubClientError handles GitHub client creation failure
-func (h *ProductionErrorHandler) HandleGitHubClientError(err error) (GitHubClientInterface, error) {
-	h.logger.Error("GitHub client initialization failed", "error", err)
-	return nil, err
-}
-
-// ShouldContinueOnError determines if service should continue despite error
+// ShouldContinueOnError determines if processing should continue after an error
 func (h *ProductionErrorHandler) ShouldContinueOnError(component string, err error) bool {
-	criticalComponents := []string{"github_client", "tmux_client"}
-	for _, critical := range criticalComponents {
-		if component == critical {
-			return false
-		}
+	ctx := context.Background()
+
+	// Git client errors are recoverable
+	if component == "git_client" {
+		h.logger.Info(ctx, "Continuing with degraded functionality",
+			logging.Field{Key: "component", Value: component},
+			logging.Field{Key: "error", Value: err.Error()},
+		)
+		return true
 	}
-	return true
-}
 
-// MockGitClient provides mock implementation for git operations
-type MockGitClient struct{}
-
-// NewMockGitClient creates a new mock git client
-func NewMockGitClient() *MockGitClient {
-	return &MockGitClient{}
-}
-
-// CreateWorktree implements git.Client interface
-func (m *MockGitClient) CreateWorktree(path, branchName string) error {
-	return nil
-}
-
-// RemoveWorktree implements git.Client interface
-func (m *MockGitClient) RemoveWorktree(path string) error {
-	return nil
-}
-
-// WorktreeExists implements git.Client interface
-func (m *MockGitClient) WorktreeExists(path string) bool {
+	// Other components are critical
+	h.logger.Error(ctx, "Critical component failure",
+		logging.Field{Key: "component", Value: component},
+		logging.Field{Key: "error", Value: err.Error()},
+	)
 	return false
 }
 
-// CreateBranch implements git.Client interface
-func (m *MockGitClient) CreateBranch(branchName, baseBranch string) error {
-	return nil
+// LogError logs an error with context
+func (h *ProductionErrorHandler) LogError(ctx context.Context, msg string, err error) {
+	h.logger.Error(ctx, msg,
+		logging.Field{Key: "error", Value: err.Error()},
+	)
 }
 
-// BranchExists implements git.Client interface
-func (m *MockGitClient) BranchExists(branchName string) bool {
-	return false
+// LogWarning logs a warning with context
+func (h *ProductionErrorHandler) LogWarning(ctx context.Context, msg string) {
+	h.logger.Warn(ctx, msg)
 }
 
-// DeleteBranch implements git.Client interface
-func (m *MockGitClient) DeleteBranch(branchName string) error {
-	return nil
-}
-
-// GetCurrentBranch implements git.Client interface
-func (m *MockGitClient) GetCurrentBranch() (string, error) {
-	return "main", nil
-}
-
-// SwitchBranch implements git.Client interface
-func (m *MockGitClient) SwitchBranch(branchName string) error {
-	return nil
-}
-
-// FetchOrigin implements git.Client interface
-func (m *MockGitClient) FetchOrigin() error {
-	return nil
-}
-
-// PullOrigin implements git.Client interface
-func (m *MockGitClient) PullOrigin(branchName string) error {
-	return nil
-}
-
-// PushOrigin implements git.Client interface
-func (m *MockGitClient) PushOrigin(branchName string, force bool) error {
-	return nil
-}
-
-// CommitChanges implements git.Client interface
-func (m *MockGitClient) CommitChanges(message string) error {
-	return nil
-}
-
-// HasUncommittedChanges implements git.Client interface
-func (m *MockGitClient) HasUncommittedChanges() (bool, error) {
-	return false, nil
-}
-
-// GetRemoteURL implements git.Client interface
-func (m *MockGitClient) GetRemoteURL(remote string) (string, error) {
-	return "https://github.com/mock/repo", nil
-}
-
-// GetRepository implements git.Client interface
-func (m *MockGitClient) GetRepository() (string, error) {
-	return "mock/repo", nil
+// LogInfo logs an info message with context
+func (h *ProductionErrorHandler) LogInfo(ctx context.Context, msg string) {
+	h.logger.Info(ctx, msg)
 }

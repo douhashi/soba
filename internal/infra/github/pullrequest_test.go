@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -52,7 +52,7 @@ func TestListPullRequests(t *testing.T) {
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
-			logger:        logger.NewNopLogger(),
+			logger:        logging.NewMockLogger(),
 		}
 
 		opts := &ListPullRequestsOptions{
@@ -82,7 +82,7 @@ func TestListPullRequests(t *testing.T) {
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
-			logger:        logger.NewNopLogger(),
+			logger:        logging.NewMockLogger(),
 		}
 
 		_, _, err := client.ListPullRequests(context.Background(), "owner", "repo", nil)
@@ -117,7 +117,7 @@ func TestMergePullRequest(t *testing.T) {
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
-			logger:        logger.NewNopLogger(),
+			logger:        logging.NewMockLogger(),
 		}
 
 		req := &MergeRequest{
@@ -145,7 +145,7 @@ func TestMergePullRequest(t *testing.T) {
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
-			logger:        logger.NewNopLogger(),
+			logger:        logging.NewMockLogger(),
 		}
 
 		_, err := client.MergePullRequest(context.Background(), "owner", "repo", 10, nil)
@@ -185,7 +185,7 @@ func TestGetPullRequest(t *testing.T) {
 			httpClient:    http.DefaultClient,
 			tokenProvider: newMockTokenProvider("test-token"),
 			baseURL:       server.URL,
-			logger:        logger.NewNopLogger(),
+			logger:        logging.NewMockLogger(),
 		}
 
 		pr, _, err := client.GetPullRequest(context.Background(), "owner", "repo", 10)

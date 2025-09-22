@@ -9,6 +9,7 @@ import (
 	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/internal/service/builder"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // DefaultServiceFactory implements ServiceFactory interface
@@ -16,6 +17,7 @@ type DefaultServiceFactory struct {
 	config       *config.Config
 	githubClient builder.GitHubClientInterface
 	tmuxClient   tmux.TmuxClient
+	logFactory   *logging.Factory
 }
 
 // SetDependencies sets the dependencies for the factory
@@ -49,7 +51,12 @@ func (f *DefaultServiceFactory) CreateWorkflowExecutor(tmuxClient tmux.TmuxClien
 	if adapter, ok := processor.(*IssueProcessorAdapter); ok {
 		concreteProcessor = adapter.IssueProcessorInterface
 	}
-	return &WorkflowExecutorAdapter{NewWorkflowExecutor(tmuxClient, concreteWorkspace, concreteProcessor)}
+	// Create logger for workflow executor
+	var logger logging.Logger = logging.NewMockLogger()
+	if f.logFactory != nil {
+		logger = f.logFactory.CreateComponentLogger("workflow-executor")
+	}
+	return &WorkflowExecutorAdapter{NewWorkflowExecutor(tmuxClient, concreteWorkspace, concreteProcessor, logger)}
 }
 
 // CreateWorkflowExecutorWithSlack creates workflow executor with Slack notifications
@@ -66,11 +73,21 @@ func (f *DefaultServiceFactory) CreateWorkflowExecutorWithSlack(tmuxClient tmux.
 
 	// Convert slack notifier interface to concrete type
 	if notifier, ok := slackNotifier.(*slack.Notifier); ok {
-		return &WorkflowExecutorAdapter{NewWorkflowExecutorWithSlack(tmuxClient, concreteWorkspace, concreteProcessor, notifier)}
+		// Create logger for workflow executor
+		var logger logging.Logger = logging.NewMockLogger()
+		if f.logFactory != nil {
+			logger = f.logFactory.CreateComponentLogger("workflow-executor")
+		}
+		return &WorkflowExecutorAdapter{NewWorkflowExecutorWithSlack(tmuxClient, concreteWorkspace, concreteProcessor, notifier, logger)}
 	}
 
 	// Fallback to regular workflow executor if slack notifier is not available
-	return &WorkflowExecutorAdapter{NewWorkflowExecutor(tmuxClient, concreteWorkspace, concreteProcessor)}
+	// Create logger for workflow executor
+	var logger logging.Logger = logging.NewMockLogger()
+	if f.logFactory != nil {
+		logger = f.logFactory.CreateComponentLogger("workflow-executor")
+	}
+	return &WorkflowExecutorAdapter{NewWorkflowExecutor(tmuxClient, concreteWorkspace, concreteProcessor, logger)}
 }
 
 // CreateIssueProcessor creates issue processor
@@ -163,7 +180,11 @@ func (f *DefaultServiceFactory) CreateDaemonServiceWithDependencies(workDir stri
 		concreteCleanupService = adapter.ClosedIssueCleanupService
 	}
 
-	service := NewDaemonServiceWithDependencies(workDir, concreteProcessor, concreteWatcher, concretePRWatcher, concreteCleanupService, tmuxClient)
+	var logger logging.Logger = logging.NewMockLogger()
+	if f.logFactory != nil {
+		logger = f.logFactory.CreateComponentLogger("daemon")
+	}
+	service := NewDaemonServiceWithDependencies(workDir, concreteProcessor, concreteWatcher, concretePRWatcher, concreteCleanupService, tmuxClient, logger)
 	return &DaemonServiceAdapter{service.(*daemonService)}
 }
 

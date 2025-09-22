@@ -12,7 +12,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestNewDaemonService(t *testing.T) {
@@ -77,9 +77,11 @@ func TestDaemonService_StartDaemonInBackground(t *testing.T) {
 			}
 
 			mockTmux := new(MockTmuxClient)
+			mockLogger := logging.NewMockLogger()
 			service := &daemonService{
 				workDir: tmpDir,
 				tmux:    mockTmux,
+				logger:  mockLogger,
 			}
 
 			if tt.alreadyRunning {
@@ -151,8 +153,10 @@ func TestDaemonService_CreatePIDFile(t *testing.T) {
 	sobaDir := filepath.Join(tmpDir, ".soba")
 	require.NoError(t, os.MkdirAll(sobaDir, 0755))
 
+	mockLogger := logging.NewMockLogger()
 	service := &daemonService{
 		workDir: tmpDir,
+		logger:  mockLogger,
 	}
 
 	err := service.createPIDFile()
@@ -174,8 +178,10 @@ func TestDaemonService_RemovePIDFile(t *testing.T) {
 	sobaDir := filepath.Join(tmpDir, ".soba")
 	require.NoError(t, os.MkdirAll(sobaDir, 0755))
 
+	mockLogger := logging.NewMockLogger()
 	service := &daemonService{
 		workDir: tmpDir,
+		logger:  mockLogger,
 	}
 
 	// PIDファイルを作成
@@ -197,8 +203,10 @@ func TestDaemonService_IsRunning(t *testing.T) {
 	sobaDir := filepath.Join(tmpDir, ".soba")
 	require.NoError(t, os.MkdirAll(sobaDir, 0755))
 
+	mockLogger := logging.NewMockLogger()
 	service := &daemonService{
 		workDir: tmpDir,
+		logger:  mockLogger,
 	}
 
 	// 最初は実行されていない
@@ -256,8 +264,10 @@ func TestDaemonService_InitializeTmuxSession(t *testing.T) {
 				mockTmux.On("CreateSession", sessionName).Return(tt.createError)
 			}
 
+			mockLogger := logging.NewMockLogger()
 			service := &daemonService{
-				tmux: mockTmux,
+				tmux:   mockTmux,
+				logger: mockLogger,
 			}
 
 			cfg := &config.Config{
@@ -360,22 +370,24 @@ func TestDaemonService_ConfigureAndStartWatchers_WithNilClosedIssueCleanupServic
 
 			// ロガーを設定（nilポインタエラーを防ぐため）
 			if watcher != nil {
-				watcher.logger = logger.NewNopLogger()
+				watcher.logger = logging.NewMockLogger()
 			}
 			if prWatcher != nil {
-				prWatcher.logger = logger.NewNopLogger()
+				prWatcher.logger = logging.NewMockLogger()
 			}
 
+			mockLogger := logging.NewMockLogger()
 			service := &daemonService{
 				watcher:                   watcher,
 				prWatcher:                 prWatcher,
 				closedIssueCleanupService: tt.closedIssueCleanupService,
 				tmux:                      mockTmux,
+				logger:                    mockLogger,
 			}
 
 			if tt.wantPanic {
 				assert.Panics(t, func() {
-					_ = service.configureAndStartWatchers(ctx, cfg, nil)
+					_ = service.configureAndStartWatchers(ctx, cfg)
 				})
 			} else {
 				// configureAndStartWatchersをgoroutineで実行
@@ -386,9 +398,7 @@ func TestDaemonService_ConfigureAndStartWatchers_WithNilClosedIssueCleanupServic
 							t.Errorf("Unexpected panic: %v", r)
 						}
 					}()
-					// テスト用のロガーを渡す
-					testLogger := logger.NewNopLogger()
-					errCh <- service.configureAndStartWatchers(ctx, cfg, testLogger)
+					errCh <- service.configureAndStartWatchers(ctx, cfg)
 				}()
 
 				// 少し待ってからキャンセル
@@ -418,9 +428,11 @@ func TestDaemonService_Stop(t *testing.T) {
 			name: "Stop when daemon is not running",
 			setupFunc: func(t *testing.T, tmpDir string) *daemonService {
 				mockTmux := new(MockTmuxClient)
+				mockLogger := logging.NewMockLogger()
 				return &daemonService{
 					workDir: tmpDir,
 					tmux:    mockTmux,
+					logger:  mockLogger,
 				}
 			},
 			wantError:      true,
@@ -437,9 +449,11 @@ func TestDaemonService_Stop(t *testing.T) {
 				require.NoError(t, os.WriteFile(pidFile, []byte("invalid"), 0600))
 
 				mockTmux := new(MockTmuxClient)
+				mockLogger := logging.NewMockLogger()
 				return &daemonService{
 					workDir: tmpDir,
 					tmux:    mockTmux,
+					logger:  mockLogger,
 				}
 			},
 			wantError:      true,
@@ -456,9 +470,11 @@ func TestDaemonService_Stop(t *testing.T) {
 				require.NoError(t, os.WriteFile(pidFile, []byte("999999"), 0600))
 
 				mockTmux := new(MockTmuxClient)
+				mockLogger := logging.NewMockLogger()
 				return &daemonService{
 					workDir: tmpDir,
 					tmux:    mockTmux,
+					logger:  mockLogger,
 				}
 			},
 			wantError:      true,
@@ -530,8 +546,10 @@ func TestDaemonService_InitializeLogging(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
+			mockLogger := logging.NewMockLogger()
 			service := &daemonService{
 				workDir: tmpDir,
+				logger:  mockLogger,
 			}
 
 			logPath, err := service.initializeLogging(tt.cfg)
@@ -588,9 +606,11 @@ func TestDaemonService_StartForegroundWithLogging(t *testing.T) {
 			mockTmux.On("SessionExists", "soba-douhashi-soba").Return(false)
 			mockTmux.On("CreateSession", "soba-douhashi-soba").Return(nil)
 
+			mockLogger := logging.NewMockLogger()
 			service := &daemonService{
 				workDir: tmpDir,
 				tmux:    mockTmux,
+				logger:  mockLogger,
 			}
 
 			ctx, cancel := context.WithCancel(context.Background())

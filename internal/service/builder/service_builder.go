@@ -1,32 +1,32 @@
 package builder
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/douhashi/soba/internal/config"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
-// ServiceBuilder builds DaemonService with proper dependency management
+// ServiceBuilder builds DaemonService with new logging system
 type ServiceBuilder struct {
 	config       *config.Config
 	workDir      string
-	logger       logger.Logger
+	logFactory   *logging.Factory
 	errorHandler ErrorHandler
 	resolver     *DependencyResolver
 	clients      *Clients
 }
 
-// NewServiceBuilder creates a new service builder
-func NewServiceBuilder() *ServiceBuilder {
+// NewServiceBuilder creates a new service builder with new logging system
+func NewServiceBuilder(logFactory *logging.Factory) *ServiceBuilder {
 	workDir, _ := os.Getwd()
-	log := logger.NewLogger(logger.GetLogger())
 
 	return &ServiceBuilder{
 		workDir:      workDir,
-		logger:       log,
-		errorHandler: NewProductionErrorHandler(log),
+		logFactory:   logFactory,
+		errorHandler: NewProductionErrorHandler(logFactory.CreateComponentLogger("error-handler")),
 	}
 }
 
@@ -42,37 +42,47 @@ func (b *ServiceBuilder) WithWorkDir(workDir string) *ServiceBuilder {
 	return b
 }
 
-// WithLogger sets logger
-func (b *ServiceBuilder) WithLogger(log logger.Logger) *ServiceBuilder {
-	b.logger = log
-	return b
-}
-
 // WithErrorHandler sets error handling strategy
 func (b *ServiceBuilder) WithErrorHandler(handler ErrorHandler) *ServiceBuilder {
 	b.errorHandler = handler
 	return b
 }
 
-// Build creates and configures DaemonService
-func (b *ServiceBuilder) Build() (DaemonService, error) {
+// Build creates and configures DaemonService with proper DI
+func (b *ServiceBuilder) Build(ctx context.Context) (DaemonService, error) {
 	// Use default config if not provided
 	if b.config == nil {
 		b.config = b.createDefaultConfig()
 	}
 
-	// Resolve dependencies
-	resolver := NewDependencyResolver(b.config, b.workDir, b.logger, b.errorHandler)
+	// Create component loggers
+	builderLogger := b.logFactory.CreateComponentLogger("builder")
+	builderLogger.Info(ctx, "Building daemon service",
+		logging.Field{Key: "repository", Value: b.config.GitHub.Repository},
+	)
 
-	clients, err := resolver.ResolveClients()
+	// Create dependency resolver with new logging
+	resolver := NewDependencyResolver(b.config, b.workDir, b.logFactory, b.errorHandler)
+
+	// Resolve clients
+	clients, err := resolver.ResolveClients(ctx)
 	if err != nil {
+		builderLogger.Error(ctx, "Failed to resolve clients",
+			logging.Field{Key: "error", Value: err.Error()},
+		)
 		return nil, fmt.Errorf("failed to resolve clients: %w", err)
 	}
 
-	services, err := resolver.ResolveServices(clients)
+	// Resolve services
+	services, err := resolver.ResolveServices(ctx, clients)
 	if err != nil {
+		builderLogger.Error(ctx, "Failed to resolve services",
+			logging.Field{Key: "error", Value: err.Error()},
+		)
 		return nil, fmt.Errorf("failed to resolve services: %w", err)
 	}
+
+	builderLogger.Info(ctx, "Successfully built daemon service")
 
 	// Create daemon service with resolved dependencies
 	return serviceFactory.CreateDaemonServiceWithDependencies(
@@ -86,16 +96,17 @@ func (b *ServiceBuilder) Build() (DaemonService, error) {
 }
 
 // BuildDefault builds with default configuration
-func (b *ServiceBuilder) BuildDefault() error {
+func (b *ServiceBuilder) BuildDefault(ctx context.Context) error {
 	// Use default config if not provided
 	if b.config == nil {
 		b.config = b.createDefaultConfig()
 	}
 
-	// Resolve dependencies
-	b.resolver = NewDependencyResolver(b.config, b.workDir, b.logger, b.errorHandler)
+	// Create dependency resolver
+	b.resolver = NewDependencyResolver(b.config, b.workDir, b.logFactory, b.errorHandler)
 
-	clients, err := b.resolver.ResolveClients()
+	// Resolve clients
+	clients, err := b.resolver.ResolveClients(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to resolve clients: %w", err)
 	}
