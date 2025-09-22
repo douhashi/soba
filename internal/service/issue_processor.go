@@ -197,37 +197,86 @@ func (p *issueProcessor) UpdateLabels(ctx context.Context, issueNumber int, remo
 		return errors.NewInternalError("repository info not set")
 	}
 
+	log.Info(ctx, "Starting label update",
+		logging.Field{Key: "issue", Value: issueNumber},
+		logging.Field{Key: "owner", Value: p.owner},
+		logging.Field{Key: "repo", Value: p.repo},
+		logging.Field{Key: "remove", Value: removeLabel},
+		logging.Field{Key: "add", Value: addLabel},
+	)
+
 	// 古いラベルを削除（存在しない場合はスキップ）
 	if removeLabel != "" {
-		if err := p.githubClient.RemoveLabelFromIssue(ctx, p.owner, p.repo, issueNumber, removeLabel); err != nil {
-			log.Error(ctx, "Failed to remove label",
-				logging.Field{Key: "error", Value: err.Error()},
-				logging.Field{Key: "issue", Value: issueNumber},
-				logging.Field{Key: "label", Value: removeLabel},
-			)
-			return errors.WrapInternal(err, "failed to remove label")
-		}
-		log.Debug(ctx, "Removed label from issue",
+		log.Debug(ctx, "Attempting to remove label",
 			logging.Field{Key: "issue", Value: issueNumber},
 			logging.Field{Key: "label", Value: removeLabel},
 		)
+
+		if err := p.githubClient.RemoveLabelFromIssue(ctx, p.owner, p.repo, issueNumber, removeLabel); err != nil {
+			// エラーメッセージを解析して、ラベルが存在しない場合は警告として扱う
+			errMsg := err.Error()
+			if strings.Contains(strings.ToLower(errMsg), "not found") ||
+				strings.Contains(strings.ToLower(errMsg), "404") ||
+				strings.Contains(strings.ToLower(errMsg), "label does not exist") {
+				log.Warn(ctx, "Label not found on issue, skipping removal",
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: removeLabel},
+				)
+				// ラベルが存在しない場合はエラーとせず、処理を続行
+			} else {
+				log.Error(ctx, "Failed to remove label",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: removeLabel},
+				)
+				return errors.WrapInternal(err, "failed to remove label")
+			}
+		} else {
+			log.Info(ctx, "Successfully removed label from issue",
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "label", Value: removeLabel},
+			)
+		}
 	}
 
 	// 新しいラベルを追加
 	if addLabel != "" {
-		if err := p.githubClient.AddLabelToIssue(ctx, p.owner, p.repo, issueNumber, addLabel); err != nil {
-			log.Error(ctx, "Failed to add label",
-				logging.Field{Key: "error", Value: err.Error()},
-				logging.Field{Key: "issue", Value: issueNumber},
-				logging.Field{Key: "label", Value: addLabel},
-			)
-			return errors.WrapInternal(err, "failed to add label")
-		}
-		log.Debug(ctx, "Added label to issue",
+		log.Debug(ctx, "Attempting to add label",
 			logging.Field{Key: "issue", Value: issueNumber},
 			logging.Field{Key: "label", Value: addLabel},
 		)
+
+		if err := p.githubClient.AddLabelToIssue(ctx, p.owner, p.repo, issueNumber, addLabel); err != nil {
+			// エラーメッセージを解析して、既にラベルが存在する場合は警告として扱う
+			errMsg := err.Error()
+			if strings.Contains(strings.ToLower(errMsg), "already exists") ||
+				strings.Contains(strings.ToLower(errMsg), "label already added") {
+				log.Warn(ctx, "Label already exists on issue",
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: addLabel},
+				)
+				// 既にラベルが存在する場合もエラーとせず、成功として扱う
+			} else {
+				log.Error(ctx, "Failed to add label",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: addLabel},
+				)
+				return errors.WrapInternal(err, "failed to add label")
+			}
+		} else {
+			log.Info(ctx, "Successfully added label to issue",
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "label", Value: addLabel},
+			)
+		}
 	}
+
+	log.Info(ctx, "Label update completed successfully",
+		logging.Field{Key: "issue", Value: issueNumber},
+		logging.Field{Key: "removed", Value: removeLabel},
+		logging.Field{Key: "added", Value: addLabel},
+	)
 
 	return nil
 }

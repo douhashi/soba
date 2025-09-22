@@ -48,6 +48,122 @@ func TestIssueProcessor_Process_EmptyRepository(t *testing.T) {
 	t.Skip("Test skipped due to logging system conflicts in test environment")
 }
 
+func TestIssueProcessor_UpdateLabels(t *testing.T) {
+	tests := []struct {
+		name        string
+		issueNumber int
+		removeLabel string
+		addLabel    string
+		setupMock   func(*MockGitHubClient)
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "successful label update",
+			issueNumber: 123,
+			removeLabel: "soba:ready",
+			addLabel:    "soba:doing",
+			setupMock: func(m *MockGitHubClient) {
+				m.removeLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					if owner != "test-owner" || repo != "test-repo" || issueNumber != 123 || label != "soba:ready" {
+						return fmt.Errorf("unexpected arguments")
+					}
+					return nil
+				}
+				m.addLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					if owner != "test-owner" || repo != "test-repo" || issueNumber != 123 || label != "soba:doing" {
+						return fmt.Errorf("unexpected arguments")
+					}
+					return nil
+				}
+			},
+			expectError: false,
+		},
+		{
+			name:        "remove label fails - label not found should be ok now",
+			issueNumber: 123,
+			removeLabel: "soba:ready",
+			addLabel:    "soba:doing",
+			setupMock: func(m *MockGitHubClient) {
+				m.removeLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					return fmt.Errorf("label not found")
+				}
+				m.addLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					return nil
+				}
+			},
+			expectError: false, // After fix, label not found errors should be ignored
+		},
+		{
+			name:        "add label fails",
+			issueNumber: 123,
+			removeLabel: "soba:ready",
+			addLabel:    "soba:doing",
+			setupMock: func(m *MockGitHubClient) {
+				m.removeLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					return nil
+				}
+				m.addLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					return fmt.Errorf("api error")
+				}
+			},
+			expectError: true,
+			errorMsg:    "failed to add label",
+		},
+		{
+			name:        "only add label",
+			issueNumber: 123,
+			removeLabel: "",
+			addLabel:    "soba:doing",
+			setupMock: func(m *MockGitHubClient) {
+				m.addLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					return nil
+				}
+			},
+			expectError: false,
+		},
+		{
+			name:        "only remove label",
+			issueNumber: 123,
+			removeLabel: "soba:ready",
+			addLabel:    "",
+			setupMock: func(m *MockGitHubClient) {
+				m.removeLabelFunc = func(ctx context.Context, owner, repo string, issueNumber int, label string) error {
+					return nil
+				}
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockGithub := &MockGitHubClient{}
+			mockExecutor := &MockWorkflowExecutor{}
+
+			processor := NewIssueProcessor(mockGithub, mockExecutor).(*issueProcessor)
+			processor.owner = "test-owner"
+			processor.repo = "test-repo"
+
+			if tt.setupMock != nil {
+				tt.setupMock(mockGithub)
+			}
+
+			ctx := context.Background()
+			err := processor.UpdateLabels(ctx, tt.issueNumber, tt.removeLabel, tt.addLabel)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 // MockGitHubClient はテスト用のモックGitHubクライアント
 type MockGitHubClient struct {
 	ListOpenIssuesFunc func(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
