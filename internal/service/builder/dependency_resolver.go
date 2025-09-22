@@ -111,8 +111,8 @@ func (r *DependencyResolver) ResolveServices(clients *ResolvedClients) (*Resolve
 	issueProcessor := serviceFactory.CreateIssueProcessor(clients.GitHubClient, workflowExecutor)
 	services.IssueProcessor = issueProcessor
 
-	// Phase 3.5: Set issue processor to workflow executor (completes the circular dependency)
-	workflowExecutor.SetIssueProcessor(issueProcessor)
+	// Phase 3.5: Note: SetIssueProcessor has been removed from the interface
+	// The processor should be passed through constructor or configuration
 
 	// Phase 4: Create watchers and other services
 	issueWatcher := r.createIssueWatcher(clients, issueProcessor, workflowExecutor)
