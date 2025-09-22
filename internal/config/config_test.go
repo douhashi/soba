@@ -502,3 +502,114 @@ github:
 		t.Errorf("Default log retention_count = %v, want 10", cfg.Log.RetentionCount)
 	}
 }
+
+func TestPIDVariableNoWarning(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	// PIDを含む設定ファイルを作成
+	configContent := `
+github:
+  token: test-token
+  repository: owner/repo
+
+log:
+  output_path: .soba/logs/soba-${PID}.log
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	// stderrをキャプチャ
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// PID環境変数を未設定にする
+	os.Unsetenv("PID")
+
+	// 設定を読み込む
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// stderrを復元して出力をキャプチャ
+	w.Close()
+	os.Stderr = oldStderr
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	stderrOutput := buf.String()
+
+	// PIDに対する警告が出ていないことを確認
+	if strings.Contains(stderrOutput, "Warning: undefined environment variable: PID") {
+		t.Errorf("Unexpected warning for PID variable found in stderr: %s", stderrOutput)
+	}
+
+	// ${PID}が置換されずに残っていることを確認（daemonで置換される）
+	if !strings.Contains(cfg.Log.OutputPath, "${PID}") {
+		t.Errorf("PID variable should not be expanded in config.Load, got: %s", cfg.Log.OutputPath)
+	}
+}
+
+func TestOtherEnvVarWarningStillWorks(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	// 他の環境変数を含む設定ファイルを作成
+	configContent := `
+github:
+  token: test-token
+  repository: owner/repo
+
+log:
+  output_path: ${CUSTOM_LOG_PATH}/soba-${PID}.log
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	// stderrをキャプチャ
+	oldStderr := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+
+	// 環境変数を未設定にする
+	os.Unsetenv("CUSTOM_LOG_PATH")
+	os.Unsetenv("PID")
+
+	// 設定を読み込む
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// stderrを復元して出力をキャプチャ
+	w.Close()
+	os.Stderr = oldStderr
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	stderrOutput := buf.String()
+
+	// CUSTOM_LOG_PATHに対する警告が出ていることを確認
+	if !strings.Contains(stderrOutput, "Warning: undefined environment variable: CUSTOM_LOG_PATH") {
+		t.Errorf("Expected warning for CUSTOM_LOG_PATH not found in stderr: %s", stderrOutput)
+	}
+
+	// PIDに対する警告が出ていないことを確認
+	if strings.Contains(stderrOutput, "Warning: undefined environment variable: PID") {
+		t.Errorf("Unexpected warning for PID variable found in stderr: %s", stderrOutput)
+	}
+
+	// 両方の変数が未展開で残っていることを確認
+	if !strings.Contains(cfg.Log.OutputPath, "${CUSTOM_LOG_PATH}") {
+		t.Errorf("CUSTOM_LOG_PATH should not be expanded when undefined, got: %s", cfg.Log.OutputPath)
+	}
+	if !strings.Contains(cfg.Log.OutputPath, "${PID}") {
+		t.Errorf("PID should not be expanded in config.Load, got: %s", cfg.Log.OutputPath)
+	}
+}
