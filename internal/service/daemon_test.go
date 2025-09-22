@@ -5,12 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/pkg/logger"
 )
 
 func TestNewDaemonService(t *testing.T) {
@@ -193,6 +195,100 @@ func (m *MockIssueProcessor) ProcessIssue(ctx context.Context, cfg *config.Confi
 
 func (m *MockIssueProcessor) Configure(cfg *config.Config) error {
 	return nil
+}
+
+func TestDaemonService_ConfigureAndStartWatchers_WithNilClosedIssueCleanupService(t *testing.T) {
+	tests := []struct {
+		name                      string
+		closedIssueCleanupService *ClosedIssueCleanupService
+		wantPanic                 bool
+	}{
+		{
+			name:                      "nil ClosedIssueCleanupService should not panic",
+			closedIssueCleanupService: nil,
+			wantPanic:                 false,
+		},
+		{
+			name:                      "valid ClosedIssueCleanupService should work",
+			closedIssueCleanupService: &ClosedIssueCleanupService{
+				// githubClientとtmuxClientはnilでOK（テストでは使わない）
+				// configureAndStartWatchersがこれらを適切に設定する
+			},
+			wantPanic: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// MockのGitHubClientとTmuxClientを作成
+			mockGitHubClient := new(MockGitHubClient)
+			mockTmux := new(MockTmuxClient)
+
+			cfg := &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "douhashi/soba",
+				},
+				Workflow: config.WorkflowConfig{
+					ClosedIssueCleanupEnabled:  true,
+					ClosedIssueCleanupInterval: 60,
+					Interval:                   20,
+				},
+			}
+
+			// IssueWatcherとPRWatcherを作成
+			watcher := NewIssueWatcher(mockGitHubClient, cfg)
+			prWatcher := NewPRWatcher(mockGitHubClient, cfg)
+
+			// ロガーを設定（nilポインタエラーを防ぐため）
+			if watcher != nil {
+				watcher.logger = logger.NewNopLogger()
+			}
+			if prWatcher != nil {
+				prWatcher.logger = logger.NewNopLogger()
+			}
+
+			service := &daemonService{
+				watcher:                   watcher,
+				prWatcher:                 prWatcher,
+				closedIssueCleanupService: tt.closedIssueCleanupService,
+				tmux:                      mockTmux,
+			}
+
+			if tt.wantPanic {
+				assert.Panics(t, func() {
+					_ = service.configureAndStartWatchers(ctx, cfg, nil)
+				})
+			} else {
+				// configureAndStartWatchersをgoroutineで実行
+				errCh := make(chan error, 1)
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							t.Errorf("Unexpected panic: %v", r)
+						}
+					}()
+					// テスト用のロガーを渡す
+					testLogger := logger.NewNopLogger()
+					errCh <- service.configureAndStartWatchers(ctx, cfg, testLogger)
+				}()
+
+				// 少し待ってからキャンセル
+				time.Sleep(10 * time.Millisecond)
+				cancel()
+
+				// エラーを待つ（タイムアウト付き）
+				select {
+				case <-errCh:
+					// 正常終了
+				case <-time.After(100 * time.Millisecond):
+					// タイムアウトOK（goroutineが動作している）
+				}
+			}
+		})
+	}
 }
 
 func TestDaemonService_Stop(t *testing.T) {
