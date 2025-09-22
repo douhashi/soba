@@ -121,6 +121,9 @@ func shouldWarnForEnvVar(key string, cfg *Config) bool {
 	case "SLACK_WEBHOOK_URL":
 		// Warn only when notifications_enabled is true
 		return cfg.Slack.NotificationsEnabled
+	case "PID":
+		// PID is a special variable replaced at daemon startup, not during config load
+		return false
 	default:
 		// For other environment variables, always warn (preserve existing behavior)
 		return true
