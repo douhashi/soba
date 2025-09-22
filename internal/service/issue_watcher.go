@@ -116,9 +116,12 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 
 	// 1. キュー管理（soba:todo → soba:queued）
 	if w.queueManager != nil {
+		w.logger.Debug(ctx, "Calling QueueManager.EnqueueNextIssue")
 		if err := w.queueManager.EnqueueNextIssue(ctx, issues); err != nil {
 			w.logger.Error(ctx, "Failed to enqueue", logging.Field{Key: "error", Value: err.Error()})
 		}
+	} else {
+		w.logger.Debug(ctx, "QueueManager is nil, skipping enqueue")
 	}
 
 	// 2. キューに入ったIssueの処理（soba:queued → plan実行）
