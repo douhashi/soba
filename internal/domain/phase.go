@@ -218,7 +218,7 @@ func GetCurrentPhaseFromLabels(labels []string) (Phase, error) {
 	// review-requestedやrequires-changesなど、複数のフェーズで使われるラベルがある
 	switch sobaLabel {
 	case LabelReady:
-		return PhasePlan, nil // readyはplanの完了後
+		return PhaseImplement, nil // readyはimplementフェーズのトリガー
 	case LabelReviewRequested:
 		// review-requestedはimplementまたはreviseの完了後
 		// この場合、Reviewフェーズとみなす
