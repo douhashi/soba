@@ -165,7 +165,23 @@ func TestFactory(t *testing.T) {
 		// Act
 		factory, err := logging.NewFactory(config)
 
-		// Assert - should default to info level
+		// Assert - should default to warn level
+		require.NoError(t, err)
+		assert.NotNil(t, factory)
+	})
+
+	t.Run("should default to warn level when no level specified", func(t *testing.T) {
+		// Arrange
+		config := logging.Config{
+			Level:  "", // empty level
+			Format: "json",
+			Output: "stdout",
+		}
+
+		// Act
+		factory, err := logging.NewFactory(config)
+
+		// Assert - should default to warn level
 		require.NoError(t, err)
 		assert.NotNil(t, factory)
 	})

@@ -181,8 +181,13 @@ func (d *daemonService) initializeLogging(cfg *config.Config, alsoToStdout bool)
 	}
 
 	// ログファイル出力用の新しいFactoryを作成
+	// 設定ファイルからのログレベルを優先し、未設定の場合は環境変数を使用
+	logLevel := cfg.Log.Level
+	if logLevel == "" {
+		logLevel = os.Getenv("LOG_LEVEL")
+	}
 	fileLogFactory, err := logging.NewFactory(logging.Config{
-		Level:        os.Getenv("LOG_LEVEL"),
+		Level:        logLevel,
 		Format:       "json",
 		Output:       logPath,
 		AlsoToStdout: alsoToStdout, // フォアグラウンドモードではstdoutにも出力

@@ -60,6 +60,7 @@ type PhaseCommand struct {
 type LogConfig struct {
 	OutputPath     string `yaml:"output_path"`
 	RetentionCount int    `yaml:"retention_count"`
+	Level          string `yaml:"level"`
 }
 
 func Load(path string) (*Config, error) {

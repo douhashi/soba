@@ -613,3 +613,63 @@ log:
 		t.Errorf("PID should not be expanded in config.Load, got: %s", cfg.Log.OutputPath)
 	}
 }
+
+func TestLoadConfigWithLogLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	configContent := `
+github:
+  token: test-token
+  repository: owner/repo
+
+log:
+  output_path: /custom/path/logs/soba.log
+  retention_count: 5
+  level: debug
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if cfg.Log.Level != "debug" {
+		t.Errorf("Log level = %v, want debug", cfg.Log.Level)
+	}
+}
+
+func TestLoadConfigWithDefaultLogLevel(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.yml")
+
+	configContent := `
+github:
+  token: test-token
+  repository: owner/repo
+
+log:
+  output_path: /custom/path/logs/soba.log
+  retention_count: 5
+`
+
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test config file: %v", err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// デフォルトは空文字列になり、logger側でwarnがデフォルトとして扱われる
+	if cfg.Log.Level != "" {
+		t.Errorf("Default log level = %v, want empty string", cfg.Log.Level)
+	}
+}

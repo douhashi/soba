@@ -68,6 +68,8 @@ log:
   output_path: .soba/logs/soba-${PID}.log
   # Number of log files to retain (default: 10)
   retention_count: 10
+  # Log level: debug, info, warn, error (default: warn)
+  level: warn
 
 # Phase commands (optional - for custom Claude commands)
 phase:
