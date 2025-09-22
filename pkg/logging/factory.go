@@ -92,7 +92,7 @@ func parseLevel(level string) slog.Level {
 	case "error":
 		return slog.LevelError
 	default:
-		return slog.LevelInfo // Default to info
+		return slog.LevelWarn // Default to warn
 	}
 }
 
