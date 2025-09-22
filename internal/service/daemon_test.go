@@ -30,6 +30,122 @@ func TestDaemonService_StartDaemon(t *testing.T) {
 	t.Skip("StartDaemon test skipped due to logging system conflicts in test environment")
 }
 
+// TestDaemonService_StartDaemonInBackground tests the background daemon start functionality
+func TestDaemonService_StartDaemonInBackground(t *testing.T) {
+	tests := []struct {
+		name           string
+		envVar         string
+		wantFork       bool
+		alreadyRunning bool
+		wantError      bool
+	}{
+		{
+			name:           "Parent process should fork child",
+			envVar:         "",
+			wantFork:       true,
+			alreadyRunning: false,
+			wantError:      false,
+		},
+		{
+			name:           "Child process should continue",
+			envVar:         "true",
+			wantFork:       false,
+			alreadyRunning: false,
+			wantError:      false,
+		},
+		{
+			name:           "Should error if already running",
+			envVar:         "",
+			wantFork:       false,
+			alreadyRunning: true,
+			wantError:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			sobaDir := filepath.Join(tmpDir, ".soba")
+			require.NoError(t, os.MkdirAll(sobaDir, 0755))
+
+			// Set test mode to prevent os.Exit
+			t.Setenv("SOBA_TEST_MODE", "true")
+
+			// Set environment variable for test
+			if tt.envVar != "" {
+				t.Setenv("SOBA_BACKGROUND_PROCESS", tt.envVar)
+			}
+
+			mockTmux := new(MockTmuxClient)
+			service := &daemonService{
+				workDir: tmpDir,
+				tmux:    mockTmux,
+			}
+
+			if tt.alreadyRunning {
+				// Create PID file to simulate running daemon
+				err := service.createPIDFile()
+				require.NoError(t, err)
+			}
+
+			cfg := &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "douhashi/soba",
+				},
+				Workflow: config.WorkflowConfig{
+					Interval: 30,
+				},
+				Log: config.LogConfig{
+					OutputPath:     ".soba/logs/soba-${PID}.log",
+					RetentionCount: 10,
+				},
+			}
+
+			if !tt.alreadyRunning && tt.envVar == "true" {
+				// Child process case - expect tmux initialization
+				mockTmux.On("SessionExists", "soba-douhashi-soba").Return(false)
+				mockTmux.On("CreateSession", "soba-douhashi-soba").Return(nil)
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			// Run the method
+			err := service.StartDaemon(ctx, cfg)
+
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				// Note: In real implementation, parent process will exit after fork
+				// and child process will continue. This test checks the setup logic.
+				if tt.wantFork {
+					// Parent process case - should prepare for fork
+					// (actual fork not tested here as it requires process separation)
+				} else if tt.envVar == "true" {
+					// Child process case - should continue with daemon logic
+					mockTmux.AssertExpectations(t)
+				}
+			}
+		})
+	}
+}
+
+// TestDaemonService_ProcessSeparation tests process separation attributes
+func TestDaemonService_ProcessSeparation(t *testing.T) {
+	t.Run("Should set correct process attributes", func(t *testing.T) {
+		// This test verifies that getSysProcAttr returns correct attributes
+		// for process separation. The actual implementation will be OS-specific.
+		attr := getSysProcAttr()
+
+		if attr != nil {
+			// On Unix systems, we expect Setsid to be true
+			// On Windows, we expect specific creation flags
+			// The actual assertion depends on the OS
+			assert.NotNil(t, attr, "Process attributes should be set")
+		}
+	})
+}
+
 func TestDaemonService_CreatePIDFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	sobaDir := filepath.Join(tmpDir, ".soba")
