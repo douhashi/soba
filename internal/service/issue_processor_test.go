@@ -64,6 +64,11 @@ func (m *MockGitHubClient) ListOpenIssues(ctx context.Context, owner, repo strin
 	return []github.Issue{}, false, nil
 }
 
+func (m *MockGitHubClient) ListIssues(ctx context.Context, owner, repo string, opts github.ListIssuesOptions) ([]github.Issue, error) {
+	// ClosedIssueCleanupService用のモック実装
+	return []github.Issue{}, nil
+}
+
 func (m *MockGitHubClient) AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error {
 	if m.addLabelFunc != nil {
 		return m.addLabelFunc(ctx, owner, repo, issueNumber, label)

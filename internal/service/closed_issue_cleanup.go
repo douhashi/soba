@@ -60,31 +60,41 @@ func (s *ClosedIssueCleanupService) Configure(owner, repo, sessionName string, e
 // Start はサービスを開始する
 func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 	if !s.enabled {
-		s.log.Info("Closed issue cleanup service is disabled")
+		if s.log != nil {
+			s.log.Info("Closed issue cleanup service is disabled")
+		}
 		return nil
 	}
 
-	s.log.Info("Starting closed issue cleanup service",
-		"owner", s.owner,
-		"repo", s.repo,
-		"interval", s.interval)
+	if s.log != nil {
+		s.log.Info("Starting closed issue cleanup service",
+			"owner", s.owner,
+			"repo", s.repo,
+			"interval", s.interval)
+	}
 
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
 	// 最初の実行
 	if err := s.cleanupOnce(ctx); err != nil {
-		s.log.Errorw("Failed to cleanup closed issues", "error", err)
+		if s.log != nil {
+			s.log.Errorw("Failed to cleanup closed issues", "error", err)
+		}
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.log.Info("Stopping closed issue cleanup service")
+			if s.log != nil {
+				s.log.Info("Stopping closed issue cleanup service")
+			}
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.cleanupOnce(ctx); err != nil {
-				s.log.Errorw("Failed to cleanup closed issues", "error", err)
+				if s.log != nil {
+					s.log.Errorw("Failed to cleanup closed issues", "error", err)
+				}
 				// エラーがあっても継続
 			}
 		}
@@ -93,7 +103,14 @@ func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 
 // cleanupOnce は1回のクリーンアップ処理を実行する
 func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
-	s.log.Debug("Starting cleanup of closed issues")
+	if s.log != nil {
+		s.log.Debug("Starting cleanup of closed issues")
+	}
+
+	// githubClientがnilの場合は何もしない
+	if s.githubClient == nil {
+		return nil
+	}
 
 	// CloseされたIssueの一覧を取得
 	opts := github.ListIssuesOptions{
@@ -102,11 +119,20 @@ func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 
 	issues, err := s.githubClient.ListIssues(ctx, s.owner, s.repo, opts)
 	if err != nil {
-		s.log.Errorw("Failed to list closed issues", "error", err)
+		if s.log != nil {
+			s.log.Errorw("Failed to list closed issues", "error", err)
+		}
 		return fmt.Errorf("failed to list closed issues: %w", err)
 	}
 
-	s.log.Debugw("Found closed issues", "count", len(issues))
+	if s.log != nil {
+		s.log.Debugw("Found closed issues", "count", len(issues))
+	}
+
+	// tmuxClientがnilの場合も何もしない
+	if s.tmuxClient == nil {
+		return nil
+	}
 
 	// 各Issueに対応するtmuxウィンドウを削除
 	for _, issue := range issues {
@@ -115,32 +141,40 @@ func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 		// ウィンドウの存在確認
 		exists, err := s.tmuxClient.WindowExists(s.sessionName, windowName)
 		if err != nil {
-			s.log.Errorw("Failed to check window existence",
-				"session", s.sessionName,
-				"window", windowName,
-				"error", err)
+			if s.log != nil {
+				s.log.Errorw("Failed to check window existence",
+					"session", s.sessionName,
+					"window", windowName,
+					"error", err)
+			}
 			continue
 		}
 
 		if !exists {
-			s.log.Debugw("Window does not exist",
-				"session", s.sessionName,
-				"window", windowName)
+			if s.log != nil {
+				s.log.Debugw("Window does not exist",
+					"session", s.sessionName,
+					"window", windowName)
+			}
 			continue
 		}
 
 		// ウィンドウを削除
 		if err := s.tmuxClient.DeleteWindow(s.sessionName, windowName); err != nil {
-			s.log.Errorw("Failed to delete tmux window",
-				"window", windowName,
-				"issue", issue.Number,
-				"error", err)
+			if s.log != nil {
+				s.log.Errorw("Failed to delete tmux window",
+					"window", windowName,
+					"issue", issue.Number,
+					"error", err)
+			}
 			continue
 		}
 
-		s.log.Infow("Deleted tmux window for closed issue",
-			"window", windowName,
-			"issue", issue.Number)
+		if s.log != nil {
+			s.log.Infow("Deleted tmux window for closed issue",
+				"window", windowName,
+				"issue", issue.Number)
+		}
 	}
 
 	return nil

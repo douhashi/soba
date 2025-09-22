@@ -171,7 +171,7 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 	}
 
 	// ClosedIssueCleanupServiceを設定
-	if cfg.GitHub.Repository != "" {
+	if d.closedIssueCleanupService != nil && cfg.GitHub.Repository != "" {
 		parts := strings.Split(cfg.GitHub.Repository, "/")
 		if len(parts) == 2 {
 			sessionName := fmt.Sprintf("soba-%s", parts[1])
@@ -206,7 +206,11 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 
 	// ClosedIssueCleanupServiceを起動
 	go func() {
-		errCh <- d.closedIssueCleanupService.Start(ctx)
+		if d.closedIssueCleanupService != nil {
+			errCh <- d.closedIssueCleanupService.Start(ctx)
+		} else {
+			errCh <- nil
+		}
 	}()
 
 	// どれかがエラーで終了したら全体を終了
