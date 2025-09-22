@@ -15,7 +15,6 @@ import (
 
 func newStartCmd() *cobra.Command {
 	var daemon bool
-	var verbose bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -24,19 +23,18 @@ func newStartCmd() *cobra.Command {
 Use -d/--daemon flag to run in daemon mode (background).
 Use -v/--verbose flag to enable debug logging.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runStart(cmd, args, daemon, verbose)
+			return runStart(cmd, args, daemon)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "run in daemon mode (background)")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging")
 
 	return cmd
 }
 
-func runStart(cmd *cobra.Command, args []string, daemon, verbose bool) error {
-	daemonService := service.NewDaemonService()
-	return runStartWithService(cmd, args, daemon, verbose, daemonService)
+func runStart(cmd *cobra.Command, args []string, daemon bool) error {
+	daemonService := service.NewDaemonService(GetLogFactory())
+	return runStartWithService(cmd, args, daemon, daemonService)
 }
 
 // DaemonServiceInterface はデーモンサービスのインターフェース（テスト用）
@@ -46,7 +44,7 @@ type DaemonServiceInterface interface {
 }
 
 // runStartWithService allows dependency injection for testing
-func runStartWithService(cmd *cobra.Command, _ []string, daemon, verbose bool, daemonService DaemonServiceInterface) error {
+func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonService DaemonServiceInterface) error {
 	var log logging.Logger = logging.NewMockLogger()
 
 	// 現在のディレクトリを取得
@@ -70,19 +68,6 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon, verbose bool, d
 	if err != nil {
 		log.Error(context.Background(), "Failed to load config", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to load config")
-	}
-
-	// verboseが指定されている場合はログレベルを調整
-	if verbose {
-		// Initialize logging factory for verbose mode
-		logConfig := logging.Config{
-			Level:  "debug",
-			Format: "text",
-		}
-		if factory, factoryErr := logging.NewFactory(logConfig); factoryErr == nil {
-			log = factory.CreateComponentLogger("cli")
-		}
-		log.Debug(context.Background(), "Debug logging enabled")
 	}
 
 	ctx := context.Background()

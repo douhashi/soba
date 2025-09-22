@@ -51,14 +51,17 @@ func init() {
 }
 
 // NewDaemonService creates a new daemon service using ServiceBuilder
-func NewDaemonService() DaemonService {
-	// デフォルトのlogFactoryを作成
-	logFactory, err := logging.NewFactory(logging.Config{
-		Level:  "DEBUG",
-		Format: "json",
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create log factory: %v", err))
+func NewDaemonService(logFactory *logging.Factory) DaemonService {
+	if logFactory == nil {
+		// フォールバック用のデフォルトファクトリ
+		var err error
+		logFactory, err = logging.NewFactory(logging.Config{
+			Level:  "info",
+			Format: "text",
+		})
+		if err != nil {
+			panic(fmt.Sprintf("Failed to create log factory: %v", err))
+		}
 	}
 
 	logger := logFactory.CreateComponentLogger("daemon-new")

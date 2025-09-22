@@ -30,15 +30,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	log := logging.NewMockLogger()
 	log.Debug(context.Background(), "Running status command")
 
-	// Create logging factory
-	logConfig := logging.Config{
-		Level:  "info",
-		Format: "text",
-	}
-	logFactory, err := logging.NewFactory(logConfig)
-	if err != nil {
-		logFactory = &logging.Factory{}
-	}
+	// Get the global log factory
+	logFactory := GetLogFactory()
 
 	// Create service builder
 	sb := builder.NewServiceBuilder(logFactory)
