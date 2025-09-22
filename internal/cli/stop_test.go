@@ -63,7 +63,7 @@ func TestStopCommand(t *testing.T) {
 			cmd.SetArgs(tt.args)
 
 			// runStopWithServiceを直接呼び出し
-			err := runStopWithService(cmd, tt.args, false, mockDaemon)
+			err := runStopWithService(cmd, tt.args, mockDaemon)
 
 			// アサーション
 			if tt.wantError {

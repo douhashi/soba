@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestExecute(t *testing.T) {
@@ -130,5 +132,124 @@ func TestConfigCommandExists(t *testing.T) {
 
 	if !found {
 		t.Error("Config command should be registered to root command")
+	}
+}
+
+func TestLogLevelFlag(t *testing.T) {
+	tests := []struct {
+		name         string
+		args         []string
+		wantLogLevel string
+		wantErr      bool
+	}{
+		{
+			name:         "Log level debug",
+			args:         []string{"--log-level", "debug", "--help"},
+			wantLogLevel: "debug",
+			wantErr:      false,
+		},
+		{
+			name:         "Log level info",
+			args:         []string{"--log-level", "info", "--help"},
+			wantLogLevel: "info",
+			wantErr:      false,
+		},
+		{
+			name:         "Log level warn",
+			args:         []string{"--log-level", "warn", "--help"},
+			wantLogLevel: "warn",
+			wantErr:      false,
+		},
+		{
+			name:         "Log level error",
+			args:         []string{"--log-level", "error", "--help"},
+			wantLogLevel: "error",
+			wantErr:      false,
+		},
+		{
+			name:         "Invalid log level",
+			args:         []string{"--log-level", "invalid", "version"},
+			wantLogLevel: "",
+			wantErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset flags
+			rootCmd = newRootCmd()
+			logLevel = ""
+			verbose = false
+			cobra.OnInitialize(initConfig)
+			rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file path")
+			rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+			rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "set log level (debug, info, warn, error)")
+
+			rootCmd.SetArgs(tt.args)
+			err := rootCmd.Execute()
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			// Check if log level was set correctly
+			if !tt.wantErr && logLevel != tt.wantLogLevel {
+				t.Errorf("logLevel = %v, want %v", logLevel, tt.wantLogLevel)
+			}
+		})
+	}
+}
+
+func TestLogLevelPriority(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		wantEffectLevel string
+		wantErr         bool
+	}{
+		{
+			name:            "log-level takes priority over verbose",
+			args:            []string{"--log-level", "error", "--verbose", "--help"},
+			wantEffectLevel: "error",
+			wantErr:         false,
+		},
+		{
+			name:            "verbose flag when no log-level",
+			args:            []string{"--verbose", "--help"},
+			wantEffectLevel: "debug",
+			wantErr:         false,
+		},
+		{
+			name:            "default when no flags",
+			args:            []string{"--help"},
+			wantEffectLevel: "warn",
+			wantErr:         false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset flags
+			rootCmd = newRootCmd()
+			logLevel = ""
+			verbose = false
+			cobra.OnInitialize(initConfig)
+			rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file path")
+			rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+			rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "set log level (debug, info, warn, error)")
+
+			rootCmd.SetArgs(tt.args)
+			err := rootCmd.Execute()
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			// After initConfig, check the effective log level
+			effectiveLevel := getEffectiveLogLevel()
+			if effectiveLevel != tt.wantEffectLevel {
+				t.Errorf("Effective log level = %v, want %v", effectiveLevel, tt.wantEffectLevel)
+			}
+		})
 	}
 }

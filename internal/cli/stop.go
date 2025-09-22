@@ -14,25 +14,21 @@ import (
 )
 
 func newStopCmd() *cobra.Command {
-	var verbose bool
-
 	cmd := &cobra.Command{
 		Use:   "stop",
 		Short: "Stop the daemon process",
 		Long:  `Stop the running soba daemon process and clean up associated tmux sessions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runStop(cmd, args, verbose)
+			return runStop(cmd, args)
 		},
 	}
-
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "enable debug logging")
 
 	return cmd
 }
 
-func runStop(cmd *cobra.Command, args []string, verbose bool) error {
-	daemonService := service.NewDaemonService()
-	return runStopWithService(cmd, args, verbose, daemonService)
+func runStop(cmd *cobra.Command, args []string) error {
+	daemonService := service.NewDaemonService(GetLogFactory())
+	return runStopWithService(cmd, args, daemonService)
 }
 
 // StopServiceInterface はストップサービスのインターフェース（テスト用）
@@ -41,22 +37,10 @@ type StopServiceInterface interface {
 }
 
 // runStopWithService allows dependency injection for testing
-func runStopWithService(cmd *cobra.Command, _ []string, verbose bool, daemonService StopServiceInterface) error {
+func runStopWithService(cmd *cobra.Command, _ []string, daemonService StopServiceInterface) error {
 	var log logging.Logger = logging.NewMockLogger()
 
 	// verboseが指定されている場合はログレベルを調整
-	if verbose {
-		// Initialize logging factory for verbose mode
-		logConfig := logging.Config{
-			Level:  "debug",
-			Format: "text",
-		}
-		factory, err := logging.NewFactory(logConfig)
-		if err == nil {
-			log = factory.CreateComponentLogger("cli")
-		}
-		log.Debug(context.Background(), "Debug logging enabled")
-	}
 
 	// 現在のディレクトリを取得
 	currentDir, err := os.Getwd()

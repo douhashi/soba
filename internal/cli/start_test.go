@@ -23,9 +23,6 @@ func TestNewStartCmd(t *testing.T) {
 	require.NotNil(t, daemonFlag)
 	assert.Equal(t, "bool", daemonFlag.Value.Type())
 
-	verboseFlag := cmd.Flags().Lookup("verbose")
-	require.NotNil(t, verboseFlag)
-	assert.Equal(t, "bool", verboseFlag.Value.Type())
 }
 
 func TestRunStart_ForegroundMode(t *testing.T) {
@@ -59,7 +56,7 @@ workflow:
 	}
 
 	cmd := &cobra.Command{}
-	err = runStartWithService(cmd, []string{}, false, false, mockService)
+	err = runStartWithService(cmd, []string{}, false, mockService)
 	assert.NoError(t, err)
 	assert.True(t, mockService.startForegroundCalled)
 }
@@ -95,7 +92,7 @@ workflow:
 	}
 
 	cmd := &cobra.Command{}
-	err = runStartWithService(cmd, []string{}, true, false, mockService)
+	err = runStartWithService(cmd, []string{}, true, mockService)
 	assert.NoError(t, err)
 	assert.True(t, mockService.startDaemonCalled)
 }
@@ -116,7 +113,7 @@ func TestRunStart_ConfigNotFound(t *testing.T) {
 	mockService := &MockDaemonServiceImpl{}
 
 	cmd := &cobra.Command{}
-	err = runStartWithService(cmd, []string{}, false, false, mockService)
+	err = runStartWithService(cmd, []string{}, false, mockService)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "config")
 }
@@ -209,7 +206,7 @@ log:
 			}
 
 			cmd := &cobra.Command{}
-			err = runStartWithService(cmd, []string{}, tt.daemonMode, false, mockService)
+			err = runStartWithService(cmd, []string{}, tt.daemonMode, mockService)
 			assert.NoError(t, err)
 
 			// ログディレクトリが作成されたことを確認

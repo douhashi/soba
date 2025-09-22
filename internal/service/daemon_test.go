@@ -16,7 +16,7 @@ import (
 )
 
 func TestNewDaemonService(t *testing.T) {
-	service := NewDaemonService()
+	service := NewDaemonService(nil)
 	assert.NotNil(t, service)
 }
 
