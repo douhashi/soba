@@ -33,7 +33,12 @@ Use -v/--verbose flag to enable debug logging.`,
 }
 
 func runStart(cmd *cobra.Command, args []string, daemon bool) error {
-	daemonService := service.NewDaemonService(GetLogFactory())
+	// Get CLI log level and verbose flags from root command
+	root := cmd.Root()
+	cliLogLevel, _ := root.Flags().GetString("log-level")
+	verboseFlag, _ := root.Flags().GetBool("verbose")
+
+	daemonService := service.NewDaemonServiceWithCLIParams(GetLogFactory(), cliLogLevel, verboseFlag)
 	return runStartWithService(cmd, args, daemon, daemonService)
 }
 

@@ -43,6 +43,8 @@ type daemonService struct {
 	closedIssueCleanupService *ClosedIssueCleanupService
 	tmux                      tmux.TmuxClient
 	logger                    logging.Logger
+	cliLogLevel               string // CLI flag log level
+	verbose                   bool   // CLI verbose flag
 }
 
 // init initializes the service factory
@@ -52,6 +54,11 @@ func init() {
 
 // NewDaemonService creates a new daemon service using ServiceBuilder
 func NewDaemonService(logFactory *logging.Factory) DaemonService {
+	return NewDaemonServiceWithCLIParams(logFactory, "", false)
+}
+
+// NewDaemonServiceWithCLIParams creates a new daemon service with CLI parameters
+func NewDaemonServiceWithCLIParams(logFactory *logging.Factory, cliLogLevel string, verbose bool) DaemonService {
 	if logFactory == nil {
 		// フォールバック用のデフォルトファクトリ
 		var err error
@@ -68,7 +75,9 @@ func NewDaemonService(logFactory *logging.Factory) DaemonService {
 	ctx := context.Background()
 	logger.Info(ctx, "NewDaemonService called")
 
-	serviceBuilder := builder.NewServiceBuilder(logFactory)
+	serviceBuilder := builder.NewServiceBuilder(logFactory).
+		WithCLILogLevel(cliLogLevel).
+		WithVerbose(verbose)
 	logger.Info(ctx, "ServiceBuilder created")
 
 	service, err := serviceBuilder.Build(ctx)
@@ -77,6 +86,19 @@ func NewDaemonService(logFactory *logging.Factory) DaemonService {
 			logging.Field{Key: "error", Value: err.Error()},
 		)
 		panic(fmt.Sprintf("Failed to build daemon service: %v", err))
+	}
+
+	// Set CLI params on daemon service
+	// Check if it's a DaemonServiceAdapter wrapping our concrete type
+	if adapter, ok := service.(*DaemonServiceAdapter); ok {
+		if adapter.daemonService != nil {
+			adapter.daemonService.cliLogLevel = cliLogLevel
+			adapter.daemonService.verbose = verbose
+		}
+	} else if daemonSvc, ok := service.(*daemonService); ok {
+		// Direct concrete type
+		daemonSvc.cliLogLevel = cliLogLevel
+		daemonSvc.verbose = verbose
 	}
 
 	logger.Info(ctx, "ServiceBuilder.Build succeeded")
@@ -152,8 +174,32 @@ func (d *daemonService) generateSessionName(repository string) string {
 	return sessionName
 }
 
+// getEffectiveLogLevel はログレベルの優先順位に基づいて有効なレベルを決定
+func (d *daemonService) getEffectiveLogLevel(cfg *config.Config, cliLogLevel string, verbose bool) string {
+	// Priority: --log-level > --verbose > config.yml > environment > default
+	if cliLogLevel != "" {
+		return cliLogLevel
+	}
+	if verbose {
+		return "debug"
+	}
+	if cfg.Log.Level != "" {
+		return cfg.Log.Level
+	}
+	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
+		return envLevel
+	}
+	return "warn" // Default level
+}
+
 // initializeLogging はログ出力を初期化する共通メソッド
 func (d *daemonService) initializeLogging(cfg *config.Config, alsoToStdout bool) (string, error) {
+	// CLIレベルを使用する新しいメソッドを呼び出す
+	return d.initializeLoggingWithCLILevel(cfg, alsoToStdout, d.cliLogLevel, d.verbose)
+}
+
+// initializeLoggingWithCLILevel はCLIレベルを考慮してログ出力を初期化
+func (d *daemonService) initializeLoggingWithCLILevel(cfg *config.Config, alsoToStdout bool, cliLogLevel string, verbose bool) (string, error) {
 	ctx := context.Background()
 
 	// 空のパスの場合は何もしない
@@ -183,12 +229,10 @@ func (d *daemonService) initializeLogging(cfg *config.Config, alsoToStdout bool)
 		logPath = filepath.Join(d.workDir, logPath)
 	}
 
+	// 有効なログレベルを決定
+	logLevel := d.getEffectiveLogLevel(cfg, cliLogLevel, verbose)
+
 	// ログファイル出力用の新しいFactoryを作成
-	// 設定ファイルからのログレベルを優先し、未設定の場合は環境変数を使用
-	logLevel := cfg.Log.Level
-	if logLevel == "" {
-		logLevel = os.Getenv("LOG_LEVEL")
-	}
 	fileLogFactory, err := logging.NewFactory(logging.Config{
 		Level:        logLevel,
 		Format:       "json",
@@ -204,11 +248,32 @@ func (d *daemonService) initializeLogging(cfg *config.Config, alsoToStdout bool)
 	} else {
 		// ファイル出力用のロガーに切り替え
 		d.logger = fileLogFactory.CreateComponentLogger("daemon")
+		d.logger.Debug(ctx, "Log level set",
+			logging.Field{Key: "level", Value: logLevel},
+			logging.Field{Key: "source", Value: d.getLogLevelSource(cfg, cliLogLevel, verbose)},
+		)
 	}
 
 	// 古いログファイルのクリーンアップはlumberjackが自動で行うため不要
 
 	return logPath, nil
+}
+
+// getLogLevelSource はログレベルの決定元を返す（デバッグ用）
+func (d *daemonService) getLogLevelSource(cfg *config.Config, cliLogLevel string, verbose bool) string {
+	if cliLogLevel != "" {
+		return "cli-flag"
+	}
+	if verbose {
+		return "verbose-flag"
+	}
+	if cfg.Log.Level != "" {
+		return "config-file"
+	}
+	if os.Getenv("LOG_LEVEL") != "" {
+		return "environment"
+	}
+	return "default"
 }
 
 // StartForeground starts Issue monitoring in foreground mode
