@@ -17,6 +17,8 @@ type ServiceBuilder struct {
 	errorHandler ErrorHandler
 	resolver     *DependencyResolver
 	clients      *Clients
+	cliLogLevel  string // CLI log level flag
+	verbose      bool   // CLI verbose flag
 }
 
 // NewServiceBuilder creates a new service builder with new logging system
@@ -45,6 +47,18 @@ func (b *ServiceBuilder) WithWorkDir(workDir string) *ServiceBuilder {
 // WithErrorHandler sets error handling strategy
 func (b *ServiceBuilder) WithErrorHandler(handler ErrorHandler) *ServiceBuilder {
 	b.errorHandler = handler
+	return b
+}
+
+// WithCLILogLevel sets CLI log level
+func (b *ServiceBuilder) WithCLILogLevel(level string) *ServiceBuilder {
+	b.cliLogLevel = level
+	return b
+}
+
+// WithVerbose sets verbose flag
+func (b *ServiceBuilder) WithVerbose(verbose bool) *ServiceBuilder {
+	b.verbose = verbose
 	return b
 }
 
