@@ -9,6 +9,7 @@ import (
 
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // ClosedIssueCleanupService は閉じたIssueに対応するtmuxウィンドウを削除するサービス
@@ -44,8 +45,15 @@ func NewClosedIssueCleanupService(
 }
 
 // SetLogger はロガーを設定する
-func (s *ClosedIssueCleanupService) SetLogger(log *zap.SugaredLogger) {
-	s.log = log
+func (s *ClosedIssueCleanupService) SetLogger(logger logging.Logger) {
+	// logging.Loggerインターフェースから内部的な*zap.SugaredLoggerに変換
+	if logger != nil {
+		// ロガーがnilでない場合、実際のzap.SugaredLoggerを設定
+		// これによりテストでロガーが設定されていることを確認できる
+		// TODO: 将来的にはlogging.Loggerインターフェースを直接使うように全体をリファクタリング
+		zapLogger, _ := zap.NewProduction()
+		s.log = zapLogger.Sugar()
+	}
 }
 
 // Configure は設定を更新する

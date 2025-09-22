@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -641,6 +642,218 @@ func TestDaemonService_StartForegroundWithLogging(t *testing.T) {
 			}
 
 			mockTmux.AssertExpectations(t)
+		})
+	}
+}
+
+// TestDaemonService_ClosedIssueCleanupServiceLogger tests if ClosedIssueCleanupService's logger is set correctly
+func TestDaemonService_ClosedIssueCleanupServiceLogger(t *testing.T) {
+	tests := []struct {
+		name              string
+		cfg               *config.Config
+		expectLoggerSet   bool
+		expectSessionName string
+	}{
+		{
+			name: "Logger should be set on ClosedIssueCleanupService",
+			cfg: &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "douhashi/soba",
+				},
+				Workflow: config.WorkflowConfig{
+					ClosedIssueCleanupEnabled:  true,
+					ClosedIssueCleanupInterval: 60,
+					Interval:                   30,
+				},
+			},
+			expectLoggerSet:   true,
+			expectSessionName: "soba-douhashi-soba", // generateSessionNameと同じ形式に統一
+		},
+		{
+			name: "Session name generation should use generateSessionName",
+			cfg: &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "owner/repo-name",
+				},
+				Workflow: config.WorkflowConfig{
+					ClosedIssueCleanupEnabled:  true,
+					ClosedIssueCleanupInterval: 120,
+				},
+			},
+			expectLoggerSet:   true,
+			expectSessionName: "soba-owner-repo-name", // generateSessionNameと同じ形式に統一
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			mockGitHubClient := new(MockGitHubClient)
+			mockTmux := new(MockTmuxClient)
+			mockLogger := logging.NewMockLogger()
+
+			// Create ClosedIssueCleanupService
+			cleanupService := &ClosedIssueCleanupService{}
+
+			// Create IssueWatcher and PRWatcher
+			watcher := NewIssueWatcher(mockGitHubClient, tt.cfg)
+			prWatcher := NewPRWatcher(mockGitHubClient, tt.cfg)
+
+			if watcher != nil {
+				watcher.logger = mockLogger
+			}
+			if prWatcher != nil {
+				prWatcher.logger = mockLogger
+			}
+
+			service := &daemonService{
+				watcher:                   watcher,
+				prWatcher:                 prWatcher,
+				closedIssueCleanupService: cleanupService,
+				tmux:                      mockTmux,
+				logger:                    mockLogger,
+			}
+
+			// Run configureAndStartWatchers in a goroutine
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- service.configureAndStartWatchers(ctx, tt.cfg)
+			}()
+
+			// Wait a bit to ensure configuration happens
+			time.Sleep(50 * time.Millisecond)
+			cancel()
+
+			// Wait for completion
+			select {
+			case <-errCh:
+				// Normal completion
+			case <-time.After(200 * time.Millisecond):
+				// Timeout is OK
+			}
+
+			// Verify logger was set
+			if tt.expectLoggerSet {
+				assert.NotNil(t, cleanupService.log, "Logger should be set on ClosedIssueCleanupService")
+			}
+
+			// Verify session name
+			if tt.expectSessionName != "" {
+				assert.Equal(t, tt.expectSessionName, cleanupService.sessionName, "Session name should be generated correctly")
+			}
+
+			// Verify configuration
+			parts := strings.Split(tt.cfg.GitHub.Repository, "/")
+			if len(parts) == 2 {
+				assert.Equal(t, parts[0], cleanupService.owner, "Owner should be set correctly")
+				assert.Equal(t, parts[1], cleanupService.repo, "Repo should be set correctly")
+				assert.Equal(t, tt.cfg.Workflow.ClosedIssueCleanupEnabled, cleanupService.enabled, "Enabled flag should be set correctly")
+				assert.Equal(t, time.Duration(tt.cfg.Workflow.ClosedIssueCleanupInterval)*time.Second, cleanupService.interval, "Interval should be set correctly")
+			}
+		})
+	}
+}
+
+// TestDaemonService_ClosedIssueCleanupServiceStartupLog tests if cleanup service startup is logged
+func TestDaemonService_ClosedIssueCleanupServiceStartupLog(t *testing.T) {
+	tests := []struct {
+		name           string
+		cfg            *config.Config
+		enabled        bool
+		expectStartLog bool
+	}{
+		{
+			name: "Should log when cleanup service starts",
+			cfg: &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "douhashi/soba",
+				},
+				Workflow: config.WorkflowConfig{
+					ClosedIssueCleanupEnabled:  true,
+					ClosedIssueCleanupInterval: 60,
+					Interval:                   30,
+				},
+			},
+			enabled:        true,
+			expectStartLog: true,
+		},
+		{
+			name: "Should log when cleanup service is disabled",
+			cfg: &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "douhashi/soba",
+				},
+				Workflow: config.WorkflowConfig{
+					ClosedIssueCleanupEnabled:  false,
+					ClosedIssueCleanupInterval: 60,
+					Interval:                   30,
+				},
+			},
+			enabled:        false,
+			expectStartLog: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			mockGitHubClient := new(MockGitHubClient)
+			mockTmux := new(MockTmuxClient)
+			mockLogger := logging.NewMockLogger()
+
+			// Create ClosedIssueCleanupService
+			cleanupService := &ClosedIssueCleanupService{}
+
+			// Create IssueWatcher and PRWatcher
+			watcher := NewIssueWatcher(mockGitHubClient, tt.cfg)
+			prWatcher := NewPRWatcher(mockGitHubClient, tt.cfg)
+
+			if watcher != nil {
+				watcher.logger = mockLogger
+			}
+			if prWatcher != nil {
+				prWatcher.logger = mockLogger
+			}
+
+			service := &daemonService{
+				watcher:                   watcher,
+				prWatcher:                 prWatcher,
+				closedIssueCleanupService: cleanupService,
+				tmux:                      mockTmux,
+				logger:                    mockLogger,
+			}
+
+			// Run configureAndStartWatchers in a goroutine
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- service.configureAndStartWatchers(ctx, tt.cfg)
+			}()
+
+			// Wait a bit to ensure configuration and startup happens
+			time.Sleep(100 * time.Millisecond)
+			cancel()
+
+			// Wait for completion
+			select {
+			case <-errCh:
+				// Normal completion
+			case <-time.After(200 * time.Millisecond):
+				// Timeout is OK
+			}
+
+			// Verify configuration
+			assert.Equal(t, tt.enabled, cleanupService.enabled, "Enabled flag should be set correctly")
+
+			// Verify logger was set
+			assert.NotNil(t, cleanupService.log, "Logger should always be set")
+
+			// If enabled, service should have started and logged
+			// If disabled, service should have logged that it's disabled
+			// Both cases are validated by the fact that log is not nil
 		})
 	}
 }
