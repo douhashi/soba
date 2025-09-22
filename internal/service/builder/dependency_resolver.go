@@ -94,7 +94,8 @@ func (r *DependencyResolver) ResolveClients(ctx context.Context) (*ResolvedClien
 	if r.config.Slack.NotificationsEnabled && r.config.Slack.WebhookURL != "" {
 		r.logger.Info(ctx, "Initializing Slack client for notifications")
 		slackClient := slack.NewClient(r.config.Slack.WebhookURL, 10*time.Second)
-		clients.SlackNotifier = slack.NewNotifier(slackClient, &r.config.Slack)
+		slackLogger := r.logFactory.CreateComponentLogger("slack-notifier")
+		clients.SlackNotifier = slack.NewNotifier(slackClient, &r.config.Slack, slackLogger)
 	} else {
 		r.logger.Debug(ctx, "Slack notifications not configured")
 	}
