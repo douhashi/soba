@@ -36,6 +36,7 @@ development workflows through seamless integration with Claude Code AI.`,
 	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newStopCmd())
 	cmd.AddCommand(newOpenCmd())
+	cmd.AddCommand(newLogCmd())
 
 	return cmd
 }
