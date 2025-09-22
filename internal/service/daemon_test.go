@@ -552,7 +552,7 @@ func TestDaemonService_InitializeLogging(t *testing.T) {
 				logger:  mockLogger,
 			}
 
-			logPath, err := service.initializeLogging(tt.cfg)
+			logPath, err := service.initializeLogging(tt.cfg, false)
 
 			if tt.wantError {
 				assert.Error(t, err)
