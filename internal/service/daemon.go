@@ -150,7 +150,7 @@ func (d *daemonService) generateSessionName(repository string) string {
 }
 
 // initializeLogging はログ出力を初期化する共通メソッド
-func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
+func (d *daemonService) initializeLogging(cfg *config.Config, alsoToStdout bool) (string, error) {
 	ctx := context.Background()
 
 	// 空のパスの場合は何もしない
@@ -182,9 +182,10 @@ func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
 
 	// ログファイル出力用の新しいFactoryを作成
 	fileLogFactory, err := logging.NewFactory(logging.Config{
-		Level:  os.Getenv("LOG_LEVEL"),
-		Format: "json",
-		Output: logPath,
+		Level:        os.Getenv("LOG_LEVEL"),
+		Format:       "json",
+		Output:       logPath,
+		AlsoToStdout: alsoToStdout, // フォアグラウンドモードではstdoutにも出力
 	})
 	if err != nil {
 		d.logger.Error(ctx, "Failed to initialize log file",
@@ -204,8 +205,8 @@ func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
 
 // StartForeground starts Issue monitoring in foreground mode
 func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config) error {
-	// ログ出力を初期化（foregroundモードでもログファイルへ出力）
-	logPath, err := d.initializeLogging(cfg)
+	// ログ出力を初期化（foregroundモードではstdoutとログファイルへ出力）
+	logPath, err := d.initializeLogging(cfg, true) // true = also output to stdout
 	if err != nil {
 		return err
 	}
@@ -338,8 +339,8 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 	}
 
 	// 子プロセス: デーモン処理を継続
-	// ログ出力を初期化
-	logPath, err := d.initializeLogging(cfg)
+	// ログ出力を初期化（daemonモードではログファイルのみに出力）
+	logPath, err := d.initializeLogging(cfg, false) // false = file only
 	if err != nil {
 		return err
 	}

@@ -10,11 +10,12 @@ import (
 
 // Config represents logger configuration
 type Config struct {
-	Level      string
-	Format     string // "json" or "text"
-	Output     string // "stdout", "stderr", or file path
-	AddSource  bool
-	TimeFormat string
+	Level        string
+	Format       string // "json" or "text"
+	Output       string // "stdout", "stderr", or file path
+	AddSource    bool
+	TimeFormat   string
+	AlsoToStdout bool // Also output to stdout when Output is a file path
 }
 
 // Factory creates logger instances with consistent configuration
@@ -38,7 +39,13 @@ func NewFactory(cfg Config) (*Factory, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create file writer: %w", err)
 		}
-		writer = fw
+
+		// If AlsoToStdout is true, create a MultiWriter that writes to both file and stdout
+		if cfg.AlsoToStdout {
+			writer = MultiWriter(fw, os.Stdout)
+		} else {
+			writer = fw
+		}
 	}
 
 	level := parseLevel(cfg.Level)
