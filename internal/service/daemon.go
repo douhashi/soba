@@ -278,9 +278,13 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 
 	// ClosedIssueCleanupServiceを設定
 	if d.closedIssueCleanupService != nil && cfg.GitHub.Repository != "" {
+		// ロガーを設定
+		d.closedIssueCleanupService.SetLogger(d.logger)
+
 		parts := strings.Split(cfg.GitHub.Repository, "/")
 		if len(parts) == 2 {
-			sessionName := fmt.Sprintf("soba-%s", parts[1])
+			// generateSessionNameメソッドを使用して統一されたセッション名を生成
+			sessionName := d.generateSessionName(cfg.GitHub.Repository)
 			interval := time.Duration(cfg.Workflow.ClosedIssueCleanupInterval) * time.Second
 			d.closedIssueCleanupService.Configure(
 				parts[0], parts[1], sessionName,
@@ -313,8 +317,13 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 	// ClosedIssueCleanupServiceを起動
 	go func() {
 		if d.closedIssueCleanupService != nil {
+			d.logger.Debug(ctx, "Starting ClosedIssueCleanupService",
+				logging.Field{Key: "enabled", Value: d.closedIssueCleanupService.enabled},
+				logging.Field{Key: "interval", Value: d.closedIssueCleanupService.interval},
+			)
 			errCh <- d.closedIssueCleanupService.Start(ctx)
 		} else {
+			d.logger.Debug(ctx, "ClosedIssueCleanupService is nil, skipping")
 			errCh <- nil
 		}
 	}()
