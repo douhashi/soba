@@ -160,8 +160,9 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 
 	// Phase 4: Update workflow executor with processor
 	r.logger.Debug(ctx, "Updating workflow executor with processor")
-	// Note: SetIssueProcessor has been removed from the interface
-	// The processor should be passed through constructor or configuration
+	// Set the issue processor on the workflow executor
+	workflowExecutor.SetIssueProcessor(issueProcessor)
+	r.logger.Info(ctx, "Successfully set IssueProcessor on WorkflowExecutor")
 
 	// Parse repository for owner and repo (needed for multiple services)
 	owner, repo := parseRepository(r.config.GitHub.Repository)
