@@ -51,6 +51,15 @@ func (n *Notifier) NotifyPRMerged(prNumber, issueNumber int) error {
 	return n.sendAsync(message)
 }
 
+func (n *Notifier) NotifyError(title, errorMessage string) error {
+	if !n.config.NotificationsEnabled {
+		return nil
+	}
+
+	message := fmt.Sprintf("❌ エラー: %s\n%s", title, errorMessage)
+	return n.sendAsync(message)
+}
+
 func (n *Notifier) sendAsync(message string) error {
 	if n.async {
 		go func() {

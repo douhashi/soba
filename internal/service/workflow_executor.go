@@ -100,6 +100,12 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 
 	// 現在実行されているフェーズに対して、トリガーラベルから実行ラベルへ更新
 	if e.issueProcessor != nil {
+		e.logger.Info(ctx, "Updating issue labels",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "remove_label", Value: phaseDef.TriggerLabel},
+			logging.Field{Key: "add_label", Value: phaseDef.ExecutionLabel},
+		)
+
 		if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel); err != nil {
 			e.logger.Error(ctx, "Failed to update labels",
 				logging.Field{Key: "error", Value: err.Error()},
@@ -107,8 +113,29 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 				logging.Field{Key: "from", Value: phaseDef.TriggerLabel},
 				logging.Field{Key: "to", Value: phaseDef.ExecutionLabel},
 			)
+
+			// Slack通知: ラベル更新エラー
+			if e.slackNotifier != nil {
+				notifyErr := e.slackNotifier.NotifyError(
+					fmt.Sprintf("Failed to update labels for issue #%d: %s → %s",
+						issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel),
+					err.Error(),
+				)
+				if notifyErr != nil {
+					e.logger.Error(ctx, "Failed to send error notification to Slack",
+						logging.Field{Key: "error", Value: notifyErr.Error()},
+					)
+				}
+			}
+
 			return WrapServiceError(err, "failed to update labels")
 		}
+
+		e.logger.Info(ctx, "Successfully updated issue labels",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "removed", Value: phaseDef.TriggerLabel},
+			logging.Field{Key: "added", Value: phaseDef.ExecutionLabel},
+		)
 	} else {
 		e.logger.Debug(ctx, "IssueProcessor is nil, skipping label update",
 			logging.Field{Key: "issue", Value: issueNumber},

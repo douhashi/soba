@@ -96,36 +96,67 @@ func (q *QueueManager) selectMinimumIssue(issues []github.Issue) *github.Issue {
 
 // updateLabels はラベルを更新する（削除→追加）
 func (q *QueueManager) updateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
+	q.logger.Info(ctx, "Updating labels for queue management",
+		logging.Field{Key: "issue", Value: issueNumber},
+		logging.Field{Key: "remove", Value: removeLabel},
+		logging.Field{Key: "add", Value: addLabel},
+	)
+
 	// 古いラベルを削除
 	if removeLabel != "" {
 		if err := q.client.RemoveLabelFromIssue(ctx, q.owner, q.repo, issueNumber, removeLabel); err != nil {
-			q.logger.Error(ctx, "Failed to remove label",
-				logging.Field{Key: "error", Value: err.Error()},
+			// エラーメッセージを解析して、ラベルが存在しない場合は警告として扱う
+			errMsg := err.Error()
+			if strings.Contains(strings.ToLower(errMsg), "not found") ||
+				strings.Contains(strings.ToLower(errMsg), "404") ||
+				strings.Contains(strings.ToLower(errMsg), "label does not exist") {
+				q.logger.Warn(ctx, "Label not found on issue, skipping removal",
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: removeLabel},
+				)
+				// ラベルが存在しない場合はエラーとせず、処理を続行
+			} else {
+				q.logger.Error(ctx, "Failed to remove label",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: removeLabel},
+				)
+				return errors.WrapInternal(err, "failed to remove label")
+			}
+		} else {
+			q.logger.Info(ctx, "Successfully removed label from issue",
 				logging.Field{Key: "issue", Value: issueNumber},
 				logging.Field{Key: "label", Value: removeLabel},
 			)
-			return errors.WrapInternal(err, "failed to remove label")
 		}
-		q.logger.Debug(ctx, "Removed label from issue",
-			logging.Field{Key: "issue", Value: issueNumber},
-			logging.Field{Key: "label", Value: removeLabel},
-		)
 	}
 
 	// 新しいラベルを追加
 	if addLabel != "" {
 		if err := q.client.AddLabelToIssue(ctx, q.owner, q.repo, issueNumber, addLabel); err != nil {
-			q.logger.Error(ctx, "Failed to add label",
-				logging.Field{Key: "error", Value: err.Error()},
+			// エラーメッセージを解析して、既にラベルが存在する場合は警告として扱う
+			errMsg := err.Error()
+			if strings.Contains(strings.ToLower(errMsg), "already exists") ||
+				strings.Contains(strings.ToLower(errMsg), "label already added") {
+				q.logger.Warn(ctx, "Label already exists on issue",
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: addLabel},
+				)
+				// 既にラベルが存在する場合もエラーとせず、成功として扱う
+			} else {
+				q.logger.Error(ctx, "Failed to add label",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "issue", Value: issueNumber},
+					logging.Field{Key: "label", Value: addLabel},
+				)
+				return errors.WrapInternal(err, "failed to add label")
+			}
+		} else {
+			q.logger.Info(ctx, "Successfully added label to issue",
 				logging.Field{Key: "issue", Value: issueNumber},
 				logging.Field{Key: "label", Value: addLabel},
 			)
-			return errors.WrapInternal(err, "failed to add label")
 		}
-		q.logger.Debug(ctx, "Added label to issue",
-			logging.Field{Key: "issue", Value: issueNumber},
-			logging.Field{Key: "label", Value: addLabel},
-		)
 	}
 
 	return nil
