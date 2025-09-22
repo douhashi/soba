@@ -34,6 +34,9 @@ func (q *QueueManager) SetLogger(log logging.Logger) {
 
 // EnqueueNextIssue は次のIssueをキューに入れる
 func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Issue) error {
+	q.logger.Debug(ctx, "EnqueueNextIssue called",
+		logging.Field{Key: "issue_count", Value: len(issues)})
+
 	// 1. アクティブなタスクがあるか確認
 	if q.hasActiveTask(issues) {
 		q.logger.Debug(ctx, "Active task exists, skipping enqueue")

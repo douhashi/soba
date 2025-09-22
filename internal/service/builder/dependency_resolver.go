@@ -163,12 +163,35 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 	// Note: SetIssueProcessor has been removed from the interface
 	// The processor should be passed through constructor or configuration
 
+	// Parse repository for owner and repo (needed for multiple services)
+	owner, repo := parseRepository(r.config.GitHub.Repository)
+
 	// Phase 5: Create watchers
 	r.logger.Debug(ctx, "Creating issue watcher")
 	services.IssueWatcher = serviceFactory.CreateIssueWatcher(
 		clients.GitHubClient,
 		r.config,
 	)
+
+	// Configure issue watcher with queue manager and other services
+	r.logger.Info(ctx, "Repository config",
+		logging.Field{Key: "repository", Value: r.config.GitHub.Repository},
+		logging.Field{Key: "owner", Value: owner},
+		logging.Field{Key: "repo", Value: repo},
+	)
+	if owner != "" && repo != "" {
+		r.logger.Info(ctx, "Creating queue manager",
+			logging.Field{Key: "owner", Value: owner},
+			logging.Field{Key: "repo", Value: repo},
+		)
+		queueManager := serviceFactory.CreateQueueManager(clients.GitHubClient, owner, repo)
+		services.IssueWatcher.SetQueueManager(queueManager)
+		r.logger.Info(ctx, "Queue manager set to IssueWatcher")
+	} else {
+		r.logger.Warn(ctx, "Skipping queue manager creation - owner or repo is empty")
+	}
+	services.IssueWatcher.SetProcessor(issueProcessor)
+	services.IssueWatcher.SetWorkflowExecutor(workflowExecutor)
 
 	r.logger.Debug(ctx, "Creating PR watcher")
 	if clients.SlackNotifier != nil && r.config.Slack.NotificationsEnabled {
@@ -197,8 +220,6 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 
 	// Phase 6: Create cleanup service
 	r.logger.Debug(ctx, "Creating cleanup service")
-	// Parse repository for owner and repo
-	owner, repo := parseRepository(r.config.GitHub.Repository)
 	services.CleanupService = serviceFactory.CreateClosedIssueCleanupService(
 		clients.GitHubClient,
 		clients.TmuxClient,

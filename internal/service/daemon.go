@@ -53,23 +53,30 @@ func init() {
 // NewDaemonService creates a new daemon service using ServiceBuilder
 func NewDaemonService() DaemonService {
 	// デフォルトのlogFactoryを作成
-	logFactory, err := logging.NewFactory(logging.Config{})
+	logFactory, err := logging.NewFactory(logging.Config{
+		Level:  "DEBUG",
+		Format: "json",
+	})
 	if err != nil {
-		// Fallback to minimal service if logging fails
-		return createFallbackService()
+		panic(fmt.Sprintf("Failed to create log factory: %v", err))
 	}
 
-	serviceBuilder := builder.NewServiceBuilder(logFactory)
+	logger := logFactory.CreateComponentLogger("daemon-new")
 	ctx := context.Background()
+	logger.Info(ctx, "NewDaemonService called")
+
+	serviceBuilder := builder.NewServiceBuilder(logFactory)
+	logger.Info(ctx, "ServiceBuilder created")
+
 	service, err := serviceBuilder.Build(ctx)
 	if err != nil {
-		logger := logFactory.CreateComponentLogger("daemon")
 		logger.Error(ctx, "Failed to create daemon service",
 			logging.Field{Key: "error", Value: err.Error()},
 		)
-		// Return minimal fallback service
-		return createFallbackService()
+		panic(fmt.Sprintf("Failed to build daemon service: %v", err))
 	}
+
+	logger.Info(ctx, "ServiceBuilder.Build succeeded")
 	return service
 }
 
@@ -91,18 +98,6 @@ func NewDaemonServiceWithDependencies(
 		closedIssueCleanupService: cleanupService,
 		tmux:                      tmuxClient,
 		logger:                    logger,
-	}
-}
-
-// createFallbackService creates minimal working service for emergency fallback
-func createFallbackService() DaemonService {
-	workDir, _ := os.Getwd()
-	factory, _ := logging.NewFactory(logging.Config{})
-	logger := factory.CreateComponentLogger("daemon-fallback")
-	return &daemonService{
-		workDir: workDir,
-		logger:  logger,
-		// All services initialized as nil - configureAndStartWatchers handles nil checks
 	}
 }
 
@@ -243,13 +238,25 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 		d.watcher.SetLogger(d.logger)
 	}
 
-	// QueueManagerにowner/repoを設定
-	if d.watcher != nil && d.watcher.queueManager != nil && cfg.GitHub.Repository != "" {
+	// QueueManagerを作成または設定
+	if d.watcher != nil && cfg.GitHub.Repository != "" {
 		parts := strings.Split(cfg.GitHub.Repository, "/")
 		if len(parts) == 2 {
-			d.watcher.queueManager.owner = parts[0]
-			d.watcher.queueManager.repo = parts[1]
-			d.watcher.queueManager.SetLogger(d.logger)
+			// QueueManagerが存在しない場合は作成
+			if d.watcher.queueManager == nil {
+				d.logger.Info(ctx, "Creating QueueManager",
+					logging.Field{Key: "owner", Value: parts[0]},
+					logging.Field{Key: "repo", Value: parts[1]},
+				)
+				queueManager := NewQueueManager(d.watcher.client, parts[0], parts[1])
+				queueManager.SetLogger(d.logger)
+				d.watcher.SetQueueManager(queueManager)
+			} else {
+				// 既存のQueueManagerを設定
+				d.watcher.queueManager.owner = parts[0]
+				d.watcher.queueManager.repo = parts[1]
+				d.watcher.queueManager.SetLogger(d.logger)
+			}
 		}
 	}
 
