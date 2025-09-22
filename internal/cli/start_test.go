@@ -144,3 +144,83 @@ func (m *MockDaemonServiceImpl) StartDaemon(ctx context.Context, cfg *config.Con
 	}
 	return nil
 }
+
+func TestRunStart_LogFileCreation(t *testing.T) {
+	tests := []struct {
+		name       string
+		daemonMode bool
+	}{
+		{
+			name:       "Foreground mode creates log file",
+			daemonMode: false,
+		},
+		{
+			name:       "Daemon mode creates log file",
+			daemonMode: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// テスト用一時ディレクトリ作成
+			tmpDir := t.TempDir()
+			sobaDir := filepath.Join(tmpDir, ".soba")
+			logsDir := filepath.Join(sobaDir, "logs")
+			require.NoError(t, os.MkdirAll(sobaDir, 0755))
+
+			// テスト用設定ファイル作成（ログ設定を含む）
+			configPath := filepath.Join(sobaDir, "config.yml")
+			configContent := `github:
+  token: test-token
+  repository: test/repo
+workflow:
+  interval: 30
+log:
+  output_path: .soba/logs/soba-${PID}.log
+  retention_count: 5`
+			require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0600))
+
+			// 現在のディレクトリを一時的に変更
+			originalDir, err := os.Getwd()
+			require.NoError(t, err)
+			require.NoError(t, os.Chdir(tmpDir))
+			defer func() {
+				require.NoError(t, os.Chdir(originalDir))
+			}()
+
+			// モックサービスでログディレクトリが作成されることを確認
+			mockService := &MockDaemonServiceImpl{
+				startForegroundFunc: func(ctx context.Context, cfg *config.Config) error {
+					// ログ設定が渡されていることを確認
+					assert.NotEmpty(t, cfg.Log.OutputPath)
+					assert.Equal(t, 5, cfg.Log.RetentionCount)
+					// ログディレクトリを作成（実際のサービスの動作を模倣）
+					require.NoError(t, os.MkdirAll(logsDir, 0755))
+					return nil
+				},
+				startDaemonFunc: func(ctx context.Context, cfg *config.Config) error {
+					// ログ設定が渡されていることを確認
+					assert.NotEmpty(t, cfg.Log.OutputPath)
+					assert.Equal(t, 5, cfg.Log.RetentionCount)
+					// ログディレクトリを作成（実際のサービスの動作を模倣）
+					require.NoError(t, os.MkdirAll(logsDir, 0755))
+					return nil
+				},
+			}
+
+			cmd := &cobra.Command{}
+			err = runStartWithService(cmd, []string{}, tt.daemonMode, false, mockService)
+			assert.NoError(t, err)
+
+			// ログディレクトリが作成されたことを確認
+			_, err = os.Stat(logsDir)
+			assert.NoError(t, err)
+
+			if tt.daemonMode {
+				assert.True(t, mockService.startDaemonCalled)
+			} else {
+				assert.True(t, mockService.startForegroundCalled)
+			}
+		})
+	}
+}

@@ -495,3 +495,132 @@ func TestDaemonService_Stop(t *testing.T) {
 		})
 	}
 }
+
+func TestDaemonService_InitializeLogging(t *testing.T) {
+	tests := []struct {
+		name          string
+		cfg           *config.Config
+		expectLogFile bool
+		wantError     bool
+	}{
+		{
+			name: "Initialize logging with valid config",
+			cfg: &config.Config{
+				Log: config.LogConfig{
+					OutputPath:     ".soba/logs/soba-${PID}.log",
+					RetentionCount: 5,
+				},
+			},
+			expectLogFile: true,
+			wantError:     false,
+		},
+		{
+			name: "Initialize logging with empty output path",
+			cfg: &config.Config{
+				Log: config.LogConfig{
+					OutputPath:     "",
+					RetentionCount: 0,
+				},
+			},
+			expectLogFile: false,
+			wantError:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			service := &daemonService{
+				workDir: tmpDir,
+			}
+
+			logPath, err := service.initializeLogging(tt.cfg)
+
+			if tt.wantError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+
+				if tt.expectLogFile && logPath != "" {
+					// ログファイルパスが正しく生成されていることを確認
+					assert.Contains(t, logPath, ".soba/logs/soba-")
+					assert.Contains(t, logPath, ".log")
+
+					// ディレクトリが作成されていることを確認
+					logDir := filepath.Dir(logPath)
+					_, err := os.Stat(logDir)
+					assert.NoError(t, err)
+				}
+			}
+		})
+	}
+}
+
+func TestDaemonService_StartForegroundWithLogging(t *testing.T) {
+	tests := []struct {
+		name          string
+		cfg           *config.Config
+		expectLogFile bool
+	}{
+		{
+			name: "StartForeground should create log file",
+			cfg: &config.Config{
+				GitHub: config.GitHubConfig{
+					Repository: "douhashi/soba",
+				},
+				Workflow: config.WorkflowConfig{
+					Interval: 30,
+				},
+				Log: config.LogConfig{
+					OutputPath:     ".soba/logs/soba-${PID}.log",
+					RetentionCount: 5,
+				},
+			},
+			expectLogFile: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
+			mockTmux := new(MockTmuxClient)
+			mockTmux.On("SessionExists", "soba-douhashi-soba").Return(false)
+			mockTmux.On("CreateSession", "soba-douhashi-soba").Return(nil)
+
+			service := &daemonService{
+				workDir: tmpDir,
+				tmux:    mockTmux,
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+
+			// StartForegroundをgoroutineで実行
+			errCh := make(chan error, 1)
+			go func() {
+				errCh <- service.StartForeground(ctx, tt.cfg)
+			}()
+
+			// 少し待ってからキャンセル
+			time.Sleep(10 * time.Millisecond)
+			cancel()
+
+			// エラーを待つ
+			select {
+			case <-errCh:
+				// 正常終了
+			case <-time.After(100 * time.Millisecond):
+				// タイムアウトOK
+			}
+
+			if tt.expectLogFile {
+				// ログディレクトリが作成されていることを確認
+				logDir := filepath.Join(tmpDir, ".soba", "logs")
+				_, err := os.Stat(logDir)
+				assert.NoError(t, err)
+			}
+
+			mockTmux.AssertExpectations(t)
+		})
+	}
+}

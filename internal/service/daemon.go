@@ -131,10 +131,73 @@ func (d *daemonService) generateSessionName(repository string) string {
 	return sessionName
 }
 
+// initializeLogging はログ出力を初期化する共通メソッド
+func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
+	log := logger.NewLogger(logger.GetLogger())
+
+	// 空のパスの場合は何もしない
+	if cfg.Log.OutputPath == "" {
+		return "", nil
+	}
+
+	// .sobaディレクトリとlogsディレクトリを作成
+	sobaDir := filepath.Join(d.workDir, ".soba")
+	logsDir := filepath.Join(sobaDir, "logs")
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		log.Error("Failed to create logs directory", "error", err)
+		return "", errors.WrapInternal(err, "failed to create logs directory")
+	}
+
+	// ログファイルパスを決定（環境変数展開）
+	logPath := cfg.Log.OutputPath
+	if strings.Contains(logPath, "${PID}") {
+		logPath = strings.ReplaceAll(logPath, "${PID}", strconv.Itoa(os.Getpid()))
+	}
+	logPath = os.ExpandEnv(logPath)
+
+	// 相対パスの場合はworkDirからの相対パスとして解釈
+	if !filepath.IsAbs(logPath) {
+		logPath = filepath.Join(d.workDir, logPath)
+	}
+
+	// ログファイル初期化（MultiWriterで標準出力とファイル両方に出力）
+	if err := logger.InitWithFile(logger.Config{
+		Environment: "production",
+		Level:       logger.ParseLevel(os.Getenv("LOG_LEVEL")),
+		FilePath:    logPath,
+	}); err != nil {
+		log.Error("Failed to initialize log file", "error", err, "path", logPath)
+		// ログファイル初期化に失敗してもデーモンは継続（stdout出力のみ）
+	}
+
+	// 古いログファイルのクリーンアップ
+	if cfg.Log.RetentionCount > 0 {
+		logDir := filepath.Dir(logPath)
+		pattern := "soba-*.log"
+		if err := logger.CleanupOldLogFiles(logDir, pattern, cfg.Log.RetentionCount); err != nil {
+			log.Warn("Failed to cleanup old log files", "error", err)
+			// クリーンアップに失敗してもデーモンは継続
+		}
+	}
+
+	return logPath, nil
+}
+
 // StartForeground starts Issue monitoring in foreground mode
 func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config) error {
 	log := logger.NewLogger(logger.GetLogger())
-	log.Info("Starting Issue monitoring in foreground mode")
+
+	// ログ出力を初期化（foregroundモードでもログファイルへ出力）
+	logPath, err := d.initializeLogging(cfg)
+	if err != nil {
+		return err
+	}
+
+	if logPath != "" {
+		log.Info("Starting Issue monitoring in foreground mode", "logFile", logPath)
+	} else {
+		log.Info("Starting Issue monitoring in foreground mode")
+	}
 
 	// tmuxセッションを初期化
 	if err := d.initializeTmuxSession(cfg); err != nil {
@@ -244,44 +307,10 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 	}
 
 	// 子プロセス: デーモン処理を継続
-	// .sobaディレクトリとlogsディレクトリを作成
-	sobaDir := filepath.Join(d.workDir, ".soba")
-	logsDir := filepath.Join(sobaDir, "logs")
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		log.Error("Failed to create logs directory", "error", err)
-		return errors.WrapInternal(err, "failed to create logs directory")
-	}
-
-	// ログファイルパスを決定（環境変数展開）
-	logPath := cfg.Log.OutputPath
-	if strings.Contains(logPath, "${PID}") {
-		logPath = strings.ReplaceAll(logPath, "${PID}", strconv.Itoa(os.Getpid()))
-	}
-	logPath = os.ExpandEnv(logPath)
-
-	// 相対パスの場合はworkDirからの相対パスとして解釈
-	if !filepath.IsAbs(logPath) {
-		logPath = filepath.Join(d.workDir, logPath)
-	}
-
-	// ログファイル初期化
-	if err := logger.InitWithFile(logger.Config{
-		Environment: "production",
-		Level:       logger.ParseLevel(os.Getenv("LOG_LEVEL")),
-		FilePath:    logPath,
-	}); err != nil {
-		log.Error("Failed to initialize log file", "error", err, "path", logPath)
-		// ログファイル初期化に失敗してもデーモンは継続（stdout出力のみ）
-	}
-
-	// 古いログファイルのクリーンアップ
-	if cfg.Log.RetentionCount > 0 {
-		logDir := filepath.Dir(logPath)
-		pattern := "soba-*.log"
-		if err := logger.CleanupOldLogFiles(logDir, pattern, cfg.Log.RetentionCount); err != nil {
-			log.Warn("Failed to cleanup old log files", "error", err)
-			// クリーンアップに失敗してもデーモンは継続
-		}
+	// ログ出力を初期化
+	logPath, err := d.initializeLogging(cfg)
+	if err != nil {
+		return err
 	}
 
 	// tmuxセッションを初期化
