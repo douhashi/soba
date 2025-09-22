@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/douhashi/soba/internal/infra"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // CreateLabel は新しいラベルを作成する
@@ -136,7 +137,12 @@ func (c *ClientImpl) RemoveLabelFromIssue(ctx context.Context, owner, repo strin
 	// レスポンスの処理
 	// ラベルが存在しない場合は404が返るが、それはエラーとしない
 	if resp.StatusCode == http.StatusNotFound {
-		c.logger.Debug("Label not found on issue", "owner", owner, "repo", repo, "issue", issueNumber, "label", label)
+		c.logger.Debug(ctx, "Label not found on issue",
+			logging.Field{Key: "owner", Value: owner},
+			logging.Field{Key: "repo", Value: repo},
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "label", Value: label},
+		)
 		return nil
 	}
 

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -11,7 +10,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/service"
 	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func newStartCmd() *cobra.Command {
@@ -48,12 +47,12 @@ type DaemonServiceInterface interface {
 
 // runStartWithService allows dependency injection for testing
 func runStartWithService(cmd *cobra.Command, _ []string, daemon, verbose bool, daemonService DaemonServiceInterface) error {
-	log := logger.NewLogger(logger.GetLogger())
+	var log logging.Logger = logging.NewMockLogger()
 
 	// 現在のディレクトリを取得
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Error("Failed to get current directory", "error", err)
+		log.Error(context.Background(), "Failed to get current directory", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to get current directory")
 	}
 
@@ -62,37 +61,40 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon, verbose bool, d
 
 	// 設定ファイルが存在するかチェック
 	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
-		log.Error("Config file not found", "path", configPath)
+		log.Error(context.Background(), "Config file not found", logging.Field{Key: "path", Value: configPath})
 		return errors.NewNotFoundError("config file not found. Please run 'soba init' first")
 	}
 
 	// 設定ファイルを読み込み
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		log.Error("Failed to load config", "error", err)
+		log.Error(context.Background(), "Failed to load config", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to load config")
 	}
 
 	// verboseが指定されている場合はログレベルを調整
 	if verbose {
-		logger.Init(logger.Config{
-			Environment: "development",
-			Level:       slog.LevelDebug,
-		})
-		log = logger.NewLogger(logger.GetLogger())
-		log.Debug("Debug logging enabled")
+		// Initialize logging factory for verbose mode
+		logConfig := logging.Config{
+			Level:  "debug",
+			Format: "text",
+		}
+		if factory, factoryErr := logging.NewFactory(logConfig); factoryErr == nil {
+			log = factory.CreateComponentLogger("cli")
+		}
+		log.Debug(context.Background(), "Debug logging enabled")
 	}
 
 	ctx := context.Background()
 
 	if daemon {
-		log.Info("Starting Issue monitoring in daemon mode", "repository", cfg.GitHub.Repository)
+		log.Info(ctx, "Starting Issue monitoring in daemon mode", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
 		err = daemonService.StartDaemon(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Successfully started daemon mode\n")
 		}
 	} else {
-		log.Info("Starting Issue monitoring in foreground mode", "repository", cfg.GitHub.Repository)
+		log.Info(ctx, "Starting Issue monitoring in foreground mode", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
 		err = daemonService.StartForeground(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Issue monitoring stopped\n")

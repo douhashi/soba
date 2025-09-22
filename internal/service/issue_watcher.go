@@ -9,7 +9,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // IssueChangeType はIssue変更の種類を表す
@@ -33,7 +33,7 @@ type IssueWatcher struct {
 	client           GitHubClientInterface
 	config           *config.Config
 	interval         time.Duration
-	logger           logger.Logger
+	logger           logging.Logger
 	previousIssues   map[int64]github.Issue  // Issue IDをキーとする前回の状態
 	processor        IssueProcessorInterface // Issue処理用のプロセッサ
 	currentIssue     *int                    // 現在処理中のIssue番号（シングルライン処理用）
@@ -49,7 +49,7 @@ func NewIssueWatcher(client GitHubClientInterface, cfg *config.Config) *IssueWat
 	}
 
 	// ロガーの初期化（テスト環境を考慮）
-	log := logger.NewNopLogger() // デフォルトでNopLogger使用
+	log := logging.NewMockLogger() // デフォルトでMockLogger使用
 
 	return &IssueWatcher{
 		client:         client,
@@ -61,7 +61,7 @@ func NewIssueWatcher(client GitHubClientInterface, cfg *config.Config) *IssueWat
 }
 
 // SetLogger はロガーを設定する（運用時用）
-func (w *IssueWatcher) SetLogger(log logger.Logger) {
+func (w *IssueWatcher) SetLogger(log logging.Logger) {
 	w.logger = log
 }
 
@@ -82,24 +82,24 @@ func (w *IssueWatcher) SetWorkflowExecutor(executor WorkflowExecutor) {
 
 // Start はIssue監視を開始する
 func (w *IssueWatcher) Start(ctx context.Context) error {
-	w.logger.Info("Starting Issue watcher", "interval", w.interval)
+	w.logger.Info(ctx, "Starting Issue watcher", logging.Field{Key: "interval", Value: w.interval})
 
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
 	// 最初に一度実行
 	if err := w.watchOnce(ctx); err != nil {
-		w.logger.Error("Initial watch failed", "error", err)
+		w.logger.Error(ctx, "Initial watch failed", logging.Field{Key: "error", Value: err.Error()})
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			w.logger.Info("Issue watcher stopped due to context cancellation")
+			w.logger.Info(ctx, "Issue watcher stopped due to context cancellation")
 			return nil
 		case <-ticker.C:
 			if err := w.watchOnce(ctx); err != nil {
-				w.logger.Error("Watch cycle failed", "error", err)
+				w.logger.Error(ctx, "Watch cycle failed", logging.Field{Key: "error", Value: err.Error()})
 			}
 		}
 	}
@@ -107,7 +107,7 @@ func (w *IssueWatcher) Start(ctx context.Context) error {
 
 // watchOnce は一度だけIssue監視を実行する
 func (w *IssueWatcher) watchOnce(ctx context.Context) error {
-	w.logger.Debug("Starting watch cycle")
+	w.logger.Debug(ctx, "Starting watch cycle")
 
 	issues, err := w.fetchFilteredIssues(ctx)
 	if err != nil {
@@ -117,7 +117,7 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 	// 1. キュー管理（soba:todo → soba:queued）
 	if w.queueManager != nil {
 		if err := w.queueManager.EnqueueNextIssue(ctx, issues); err != nil {
-			w.logger.Error("Failed to enqueue", "error", err)
+			w.logger.Error(ctx, "Failed to enqueue", logging.Field{Key: "error", Value: err.Error()})
 		}
 	}
 
@@ -132,7 +132,7 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 
 	// 選択されたIssueを処理
 	if err := w.processSelectedIssue(ctx, issueToProcess); err != nil {
-		w.logger.Error("Failed to process selected issue", "error", err)
+		w.logger.Error(ctx, "Failed to process selected issue", logging.Field{Key: "error", Value: err.Error()})
 	}
 
 	// 自動フェーズ遷移を処理（queue以外）
@@ -148,7 +148,7 @@ func (w *IssueWatcher) detectAndLogChanges(issues []github.Issue) {
 		return
 	}
 
-	w.logger.Info("Detected issue changes", "count", len(changes))
+	w.logger.Info(context.Background(), "Detected issue changes", logging.Field{Key: "count", Value: len(changes)})
 	for _, change := range changes {
 		w.logChange(change)
 		// PhaseStrategyが有効な場合は、フェーズ分析を行う
@@ -174,13 +174,20 @@ func (w *IssueWatcher) processSelectedIssue(ctx context.Context, issueToProcess 
 	}
 
 	if phaseToExecute == "" {
-		w.logger.Debug("No trigger label found for issue", "issue", issueToProcess.Number)
+		w.logger.Debug(ctx, "No trigger label found for issue", logging.Field{Key: "issue", Value: issueToProcess.Number})
 		return nil
 	}
 
-	w.logger.Info("Processing issue in single-line mode", "issue", issueToProcess.Number, "phase", phaseToExecute)
+	w.logger.Info(ctx, "Processing issue in single-line mode",
+		logging.Field{Key: "issue", Value: issueToProcess.Number},
+		logging.Field{Key: "phase", Value: phaseToExecute},
+	)
 	if err := w.workflowExecutor.ExecutePhase(ctx, w.config, issueToProcess.Number, phaseToExecute); err != nil {
-		w.logger.Error("Failed to execute phase", "error", err, "issue", issueToProcess.Number, "phase", phaseToExecute)
+		w.logger.Error(ctx, "Failed to execute phase",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "issue", Value: issueToProcess.Number},
+			logging.Field{Key: "phase", Value: phaseToExecute},
+		)
 		return err
 	}
 
@@ -196,12 +203,15 @@ func (w *IssueWatcher) processQueuedIssues(ctx context.Context, issues []github.
 	for _, issue := range issues {
 		// soba:queuedラベルがあれば即座にplanフェーズを実行
 		if w.hasLabel(issue, domain.LabelQueued) {
-			w.logger.Info("Processing queued issue", "issue", issue.Number)
+			w.logger.Info(ctx, "Processing queued issue", logging.Field{Key: "issue", Value: issue.Number})
 
 			// 明示的にplanフェーズを実行
 			err := w.workflowExecutor.ExecutePhase(ctx, w.config, issue.Number, domain.PhasePlan)
 			if err != nil {
-				w.logger.Error("Failed to execute plan phase", "error", err, "issue", issue.Number)
+				w.logger.Error(ctx, "Failed to execute plan phase",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "issue", Value: issue.Number},
+				)
 			}
 			break // シングルライン処理のため1つだけ処理
 		}
@@ -225,9 +235,12 @@ func (w *IssueWatcher) handleAutoTransitions(ctx context.Context, issues []githu
 			continue
 		}
 
-		w.logger.Info("Auto-transitioning issue phase", "issue", issue.Number)
+		w.logger.Info(ctx, "Auto-transitioning issue phase", logging.Field{Key: "issue", Value: issue.Number})
 		if err := w.processor.ProcessIssue(ctx, w.config, issue); err != nil {
-			w.logger.Error("Failed to auto-transition issue", "error", err, "issue", issue.Number)
+			w.logger.Error(ctx, "Failed to auto-transition issue",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issue.Number},
+			)
 		}
 	}
 }
@@ -247,11 +260,19 @@ func (w *IssueWatcher) fetchFilteredIssues(ctx context.Context) ([]github.Issue,
 
 	issues, _, err := w.client.ListOpenIssues(ctx, owner, repo, opts)
 	if err != nil {
-		w.logger.Error("Failed to fetch issues from GitHub", "error", err, "owner", owner, "repo", repo)
+		w.logger.Error(ctx, "Failed to fetch issues from GitHub",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "owner", Value: owner},
+			logging.Field{Key: "repo", Value: repo},
+		)
 		return nil, err
 	}
 
-	w.logger.Debug("Fetched issues from GitHub", "total_count", len(issues), "owner", owner, "repo", repo)
+	w.logger.Debug(ctx, "Fetched issues from GitHub",
+		logging.Field{Key: "total_count", Value: len(issues)},
+		logging.Field{Key: "owner", Value: owner},
+		logging.Field{Key: "repo", Value: repo},
+	)
 
 	// soba:で始まるラベルを持つIssueのみをフィルタ
 	var filteredIssues []github.Issue
@@ -261,7 +282,10 @@ func (w *IssueWatcher) fetchFilteredIssues(ctx context.Context) ([]github.Issue,
 		}
 	}
 
-	w.logger.Debug("Filtered soba issues", "filtered_count", len(filteredIssues), "total_count", len(issues))
+	w.logger.Debug(ctx, "Filtered soba issues",
+		logging.Field{Key: "filtered_count", Value: len(filteredIssues)},
+		logging.Field{Key: "total_count", Value: len(issues)},
+	)
 
 	return filteredIssues, nil
 }
@@ -345,7 +369,10 @@ func (w *IssueWatcher) parseRepository() (string, string) {
 	repo := w.config.GitHub.Repository
 	parts := strings.Split(repo, "/")
 	if len(parts) != 2 {
-		w.logger.Error("Invalid repository format", "repository", repo, "expected_format", "owner/repo")
+		w.logger.Error(context.Background(), "Invalid repository format",
+			logging.Field{Key: "repository", Value: repo},
+			logging.Field{Key: "expected_format", Value: "owner/repo"},
+		)
 		return "", ""
 	}
 	return parts[0], parts[1]
@@ -355,22 +382,25 @@ func (w *IssueWatcher) parseRepository() (string, string) {
 func (w *IssueWatcher) logChange(change IssueChange) {
 	switch change.Type {
 	case IssueChangeTypeNew:
-		w.logger.Info("New issue detected",
-			"issue_number", change.Issue.Number,
-			"title", change.Issue.Title,
-			"labels", w.formatLabels(change.Issue.Labels))
+		w.logger.Info(context.Background(), "New issue detected",
+			logging.Field{Key: "issue_number", Value: change.Issue.Number},
+			logging.Field{Key: "title", Value: change.Issue.Title},
+			logging.Field{Key: "labels", Value: w.formatLabels(change.Issue.Labels)},
+		)
 	case IssueChangeTypeLabelChanged:
-		w.logger.Info("Issue label changed",
-			"issue_number", change.Issue.Number,
-			"title", change.Issue.Title,
-			"old_labels", w.formatLabels(change.Previous.Labels),
-			"new_labels", w.formatLabels(change.Issue.Labels))
+		w.logger.Info(context.Background(), "Issue label changed",
+			logging.Field{Key: "issue_number", Value: change.Issue.Number},
+			logging.Field{Key: "title", Value: change.Issue.Title},
+			logging.Field{Key: "old_labels", Value: w.formatLabels(change.Previous.Labels)},
+			logging.Field{Key: "new_labels", Value: w.formatLabels(change.Issue.Labels)},
+		)
 	case IssueChangeTypeStateChanged:
-		w.logger.Info("Issue state changed",
-			"issue_number", change.Issue.Number,
-			"title", change.Issue.Title,
-			"old_state", change.Previous.State,
-			"new_state", change.Issue.State)
+		w.logger.Info(context.Background(), "Issue state changed",
+			logging.Field{Key: "issue_number", Value: change.Issue.Number},
+			logging.Field{Key: "title", Value: change.Issue.Title},
+			logging.Field{Key: "old_state", Value: change.Previous.State},
+			logging.Field{Key: "new_state", Value: change.Issue.State},
+		)
 	}
 }
 
@@ -426,7 +456,7 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 	}
 	prevPhase, err := domain.GetCurrentPhaseFromLabels(prevLabelNames)
 	if err != nil {
-		w.logger.Debug("Failed to get previous phase", "error", err)
+		w.logger.Debug(context.Background(), "Failed to get previous phase", logging.Field{Key: "error", Value: err.Error()})
 		return true // エラーの場合は検証をスキップ
 	}
 
@@ -437,7 +467,7 @@ func (w *IssueWatcher) isValidTransition(change IssueChange) bool {
 	}
 	currPhase, err := domain.GetCurrentPhaseFromLabels(currLabelNames)
 	if err != nil {
-		w.logger.Debug("Failed to get current phase", "error", err)
+		w.logger.Debug(context.Background(), "Failed to get current phase", logging.Field{Key: "error", Value: err.Error()})
 		return true // エラーの場合は検証をスキップ
 	}
 
@@ -476,7 +506,7 @@ func (w *IssueWatcher) checkInProgressIssues(issues []github.Issue) *github.Issu
 	for _, issue := range issues {
 		if w.isInProgressPhase(issue) {
 			w.currentIssue = &issue.Number
-			w.logger.Debug("Issue still in progress", "issue", issue.Number)
+			w.logger.Debug(context.Background(), "Issue still in progress", logging.Field{Key: "issue", Value: issue.Number})
 			return nil // シングルライン処理のため、他のIssueは処理しない
 		}
 	}
@@ -495,18 +525,18 @@ func (w *IssueWatcher) checkCurrentIssue(issues []github.Issue) bool {
 			// 進行中ラベルがない場合は、処理が完了したとみなす
 			// （例：soba:planning → soba:readyへの遷移）
 			if !w.isInProgressPhase(issue) {
-				w.logger.Info("Issue phase completed, ready for next phase", "issue", currentIssueNumber)
+				w.logger.Info(context.Background(), "Issue phase completed, ready for next phase", logging.Field{Key: "issue", Value: currentIssueNumber})
 				w.currentIssue = nil
 				return false
 			}
 
-			w.logger.Debug("Issue still in progress", "issue", currentIssueNumber)
+			w.logger.Debug(context.Background(), "Issue still in progress", logging.Field{Key: "issue", Value: currentIssueNumber})
 			return true
 		}
 	}
 
 	// 処理中のIssueが見つからない場合もクリア（Issue closed の場合）
-	w.logger.Info("Processing issue completed (closed)", "issue", currentIssueNumber)
+	w.logger.Info(context.Background(), "Processing issue completed (closed)", logging.Field{Key: "issue", Value: currentIssueNumber})
 	w.currentIssue = nil
 	return false
 }
@@ -527,7 +557,11 @@ func (w *IssueWatcher) collectProcessableIssues(issues []github.Issue) []github.
 
 		hasTodoLabel := w.hasLabel(issue, "soba:todo")
 		hasProcessable := w.hasProcessablePhase(issue)
-		w.logger.Debug("Checking issue for processing", "issue", issue.Number, "hasTodo", hasTodoLabel, "hasProcessable", hasProcessable)
+		w.logger.Debug(context.Background(), "Checking issue for processing",
+			logging.Field{Key: "issue", Value: issue.Number},
+			logging.Field{Key: "hasTodo", Value: hasTodoLabel},
+			logging.Field{Key: "hasProcessable", Value: hasProcessable},
+		)
 
 		if hasTodoLabel || hasProcessable {
 			processableIssues = append(processableIssues, issue)
@@ -549,14 +583,14 @@ func (w *IssueWatcher) selectMinimumIssue(processableIssues []github.Issue) *git
 	if w.currentIssue == nil {
 		issueNumber := minIssue.Number
 		w.currentIssue = &issueNumber
-		w.logger.Info("Selected issue for processing", "issue", minIssue.Number)
+		w.logger.Info(context.Background(), "Selected issue for processing", logging.Field{Key: "issue", Value: minIssue.Number})
 		return &minIssue
 	}
 
 	// 処理中のIssueがある場合は、そのIssueのみ返す
 	for _, issue := range processableIssues {
 		if issue.Number == *w.currentIssue {
-			w.logger.Debug("Continuing processing of current issue", "issue", issue.Number)
+			w.logger.Debug(context.Background(), "Continuing processing of current issue", logging.Field{Key: "issue", Value: issue.Number})
 			return &issue
 		}
 	}
@@ -564,7 +598,7 @@ func (w *IssueWatcher) selectMinimumIssue(processableIssues []github.Issue) *git
 	// 処理中のIssueが見つからない場合は新しいIssueを選択
 	issueNumber := minIssue.Number
 	w.currentIssue = &issueNumber
-	w.logger.Info("Selected new issue for processing", "issue", minIssue.Number)
+	w.logger.Info(context.Background(), "Selected new issue for processing", logging.Field{Key: "issue", Value: minIssue.Number})
 	return &minIssue
 }
 
@@ -650,7 +684,10 @@ func (w *IssueWatcher) analyzeAndLogPhaseTransition(change IssueChange) {
 	// 現在のフェーズと次のラベルを取得
 	currentPhase, nextLabel, err := w.analyzePhase(change.Issue)
 	if err != nil {
-		w.logger.Debug("Failed to analyze phase", "error", err, "issue_number", change.Issue.Number)
+		w.logger.Debug(context.Background(), "Failed to analyze phase",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "issue_number", Value: change.Issue.Number},
+		)
 		return
 	}
 
@@ -659,17 +696,17 @@ func (w *IssueWatcher) analyzeAndLogPhaseTransition(change IssueChange) {
 
 	// ログ出力
 	if isValid {
-		w.logger.Info("Phase transition detected",
-			"issue_number", change.Issue.Number,
-			"from_phase", string(prevPhase),
-			"to_phase", currentPhase,
-			"next_label", nextLabel,
+		w.logger.Info(context.Background(), "Phase transition detected",
+			logging.Field{Key: "issue_number", Value: change.Issue.Number},
+			logging.Field{Key: "from_phase", Value: string(prevPhase)},
+			logging.Field{Key: "to_phase", Value: currentPhase},
+			logging.Field{Key: "next_label", Value: nextLabel},
 		)
 	} else {
-		w.logger.Warn("Invalid phase transition detected",
-			"issue_number", change.Issue.Number,
-			"from_phase", string(prevPhase),
-			"to_phase", currentPhase,
+		w.logger.Warn(context.Background(), "Invalid phase transition detected",
+			logging.Field{Key: "issue_number", Value: change.Issue.Number},
+			logging.Field{Key: "from_phase", Value: string(prevPhase)},
+			logging.Field{Key: "to_phase", Value: currentPhase},
 		)
 	}
 }

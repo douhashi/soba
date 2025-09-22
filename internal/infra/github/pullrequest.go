@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	"github.com/douhashi/soba/internal/infra"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // ListPullRequests は指定されたリポジトリのPR一覧を取得する
@@ -73,11 +74,11 @@ func (c *ClientImpl) ListPullRequests(ctx context.Context, owner, repo string, o
 	// ページネーションのチェック
 	hasNextPage := c.hasNextPage(resp)
 
-	c.logger.Info("Fetched pull requests",
-		"count", len(prs),
-		"owner", owner,
-		"repo", repo,
-		"hasNextPage", hasNextPage,
+	c.logger.Info(ctx, "Fetched pull requests",
+		logging.Field{Key: "count", Value: len(prs)},
+		logging.Field{Key: "owner", Value: owner},
+		logging.Field{Key: "repo", Value: repo},
+		logging.Field{Key: "hasNextPage", Value: hasNextPage},
 	)
 
 	return prs, hasNextPage, nil
@@ -185,11 +186,11 @@ func (c *ClientImpl) MergePullRequest(ctx context.Context, owner, repo string, n
 		return nil, infra.WrapInfraError(err, "failed to decode response")
 	}
 
-	c.logger.Info("Pull request merged successfully",
-		"number", number,
-		"owner", owner,
-		"repo", repo,
-		"sha", mergeResp.SHA,
+	c.logger.Info(ctx, "Pull request merged successfully",
+		logging.Field{Key: "number", Value: number},
+		logging.Field{Key: "owner", Value: owner},
+		logging.Field{Key: "repo", Value: repo},
+		logging.Field{Key: "sha", Value: mergeResp.SHA},
 	)
 
 	return &mergeResp, nil

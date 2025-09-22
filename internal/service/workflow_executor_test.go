@@ -10,7 +10,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 type MockTmuxClient struct {
@@ -222,7 +222,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tt.setupMocks(mockTmux, mockWorkspace, mockProcessor)
 			}
 
-			executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
+			executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor, logging.NewMockLogger())
 
 			cfg := &config.Config{
 				Git: config.GitConfig{
@@ -321,7 +321,7 @@ func TestWorkflowExecutor_managePane(t *testing.T) {
 				tmux:           mockTmux,
 				workspace:      mockWorkspace,
 				issueProcessor: mockProcessor,
-				logger:         logger.NewNopLogger(),
+				logger:         logging.NewMockLogger(),
 				maxPanes:       tt.maxPanes,
 			}
 
@@ -358,7 +358,7 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockTmux.On("GetLastPaneIndex", "soba-test-repo", "issue-1").Return(0, nil)
 	mockTmux.On("SendCommand", "soba-test-repo", "issue-1", 0, `cd .git/soba/worktrees/issue-1 && soba:plan "1"`).Return(nil)
 
-	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
+	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor, logging.NewMockLogger())
 
 	cfg := &config.Config{
 		Git: config.GitConfig{
@@ -464,7 +464,7 @@ func TestWorkflowExecutor_executeCommandPhase_PaneSkip(t *testing.T) {
 			executor := &workflowExecutor{
 				tmux:      mockTmux,
 				workspace: mockWorkspace,
-				logger:    logger.NewLogger(logger.GetLogger()),
+				logger:    logging.NewMockLogger(),
 				maxPanes:  4,
 			}
 
@@ -691,7 +691,7 @@ func TestWorkflowExecutor_setupTmuxSession(t *testing.T) {
 
 			executor := &workflowExecutor{
 				tmux:     mockTmux,
-				logger:   logger.NewLogger(logger.GetLogger()),
+				logger:   logging.NewMockLogger(),
 				maxPanes: 4,
 			}
 

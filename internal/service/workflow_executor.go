@@ -11,7 +11,7 @@ import (
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 const (
@@ -33,7 +33,7 @@ type workflowExecutor struct {
 	workspace      GitWorkspaceManager
 	issueProcessor IssueProcessorUpdater
 	slackNotifier  *slack.Notifier
-	logger         logger.Logger
+	logger         logging.Logger
 	maxPanes       int
 }
 
@@ -44,54 +44,50 @@ type IssueProcessorUpdater interface {
 }
 
 // NewWorkflowExecutor は新しいWorkflowExecutorを作成する
-func NewWorkflowExecutor(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater) WorkflowExecutor {
+func NewWorkflowExecutor(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, logger logging.Logger) WorkflowExecutor {
 	return &workflowExecutor{
 		tmux:           tmuxClient,
 		workspace:      workspace,
 		issueProcessor: processor,
-		logger:         logger.NewLogger(logger.GetLogger()),
+		logger:         logger,
 		maxPanes:       DefaultMaxPanes,
 	}
 }
 
 // NewWorkflowExecutorWithSlack はSlack通知付きで新しいWorkflowExecutorを作成する
-func NewWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, slackNotifier *slack.Notifier) WorkflowExecutor {
+func NewWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, slackNotifier *slack.Notifier, logger logging.Logger) WorkflowExecutor {
 	return &workflowExecutor{
 		tmux:           tmuxClient,
 		workspace:      workspace,
 		issueProcessor: processor,
 		slackNotifier:  slackNotifier,
-		logger:         logger.NewLogger(logger.GetLogger()),
-		maxPanes:       DefaultMaxPanes,
-	}
-}
-
-// NewWorkflowExecutorWithLogger はロガー付きで新しいWorkflowExecutorを作成する
-func NewWorkflowExecutorWithLogger(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, log logger.Logger) WorkflowExecutor {
-	return &workflowExecutor{
-		tmux:           tmuxClient,
-		workspace:      workspace,
-		issueProcessor: processor,
-		logger:         log,
+		logger:         logger,
 		maxPanes:       DefaultMaxPanes,
 	}
 }
 
 // ExecutePhase は指定されたフェーズを実行する
 func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error {
-	e.logger.Info("Executing phase", "issue", issueNumber, "phase", phase)
+	e.logger.Info(ctx, "Executing phase",
+		logging.Field{Key: "issue", Value: issueNumber},
+		logging.Field{Key: "phase", Value: string(phase)},
+	)
 
 	// Slack通知: フェーズ開始
 	if e.slackNotifier != nil {
 		if err := e.slackNotifier.NotifyPhaseStart(string(phase), issueNumber); err != nil {
-			e.logger.Error("Failed to send Slack notification", "error", err, "phase", phase, "issue", issueNumber)
+			e.logger.Error(ctx, "Failed to send Slack notification",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "phase", Value: string(phase)},
+				logging.Field{Key: "issue", Value: issueNumber},
+			)
 		}
 	}
 
 	// IssueProcessorに設定を適用
 	if e.issueProcessor != nil {
 		if err := e.issueProcessor.Configure(cfg); err != nil {
-			e.logger.Error("Failed to configure issue processor", "error", err)
+			e.logger.Error(ctx, "Failed to configure issue processor", logging.Field{Key: "error", Value: err.Error()})
 			return WrapServiceError(err, "failed to configure issue processor")
 		}
 	}
@@ -105,18 +101,29 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 	// 現在実行されているフェーズに対して、トリガーラベルから実行ラベルへ更新
 	if e.issueProcessor != nil {
 		if err := e.issueProcessor.UpdateLabels(ctx, issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel); err != nil {
-			e.logger.Error("Failed to update labels", "error", err, "issue", issueNumber, "from", phaseDef.TriggerLabel, "to", phaseDef.ExecutionLabel)
+			e.logger.Error(ctx, "Failed to update labels",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "from", Value: phaseDef.TriggerLabel},
+				logging.Field{Key: "to", Value: phaseDef.ExecutionLabel},
+			)
 			return WrapServiceError(err, "failed to update labels")
 		}
 	} else {
-		e.logger.Debug("IssueProcessor is nil, skipping label update", "issue", issueNumber, "phase", phase)
+		e.logger.Debug(ctx, "IssueProcessor is nil, skipping label update",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "phase", Value: string(phase)},
+		)
 	}
 
 	// 実行タイプに応じた処理
 	switch phaseDef.ExecutionType {
 	case domain.ExecutionTypeLabelOnly:
 		// ラベル更新のみの場合は、ここで完了
-		e.logger.Debug("Label-only phase completed", "issue", issueNumber, "phase", phase)
+		e.logger.Debug(ctx, "Label-only phase completed",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "phase", Value: string(phase)},
+		)
 	case domain.ExecutionTypeCommand:
 		// コマンド実行が必要な場合
 		if err := e.executeCommandPhase(cfg, issueNumber, phase, phaseDef); err != nil {
@@ -126,7 +133,10 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 		return NewWorkflowExecutionError("soba", string(phase), fmt.Sprintf("unknown execution type: %s", phaseDef.ExecutionType))
 	}
 
-	e.logger.Info("Phase execution completed", "issue", issueNumber, "phase", phase)
+	e.logger.Info(ctx, "Phase execution completed",
+		logging.Field{Key: "issue", Value: issueNumber},
+		logging.Field{Key: "phase", Value: string(phase)},
+	)
 	return nil
 }
 
@@ -151,7 +161,11 @@ func (e *workflowExecutor) executeCommandPhase(cfg *config.Config, issueNumber i
 	// windowが新規作成された場合は、既に1ペインがあるのでスキップ
 	if phaseDef.RequiresPane && !windowCreated {
 		if err := e.managePane(sessionName, windowName); err != nil {
-			e.logger.Error("Failed to manage pane", "error", err, "session", sessionName, "window", windowName)
+			e.logger.Error(context.Background(), "Failed to manage pane",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "session", Value: sessionName},
+				logging.Field{Key: "window", Value: windowName},
+			)
 			return err
 		}
 	}
@@ -170,12 +184,15 @@ func (e *workflowExecutor) prepareWorkspaceIfNeeded(issueNumber int, phaseDef *d
 		return nil
 	}
 
-	e.logger.Info("Preparing workspace for issue", "issue", issueNumber)
+	e.logger.Info(context.Background(), "Preparing workspace for issue", logging.Field{Key: "issue", Value: issueNumber})
 	if err := e.workspace.PrepareWorkspace(issueNumber); err != nil {
-		e.logger.Error("Failed to prepare workspace", "error", err, "issue", issueNumber)
+		e.logger.Error(context.Background(), "Failed to prepare workspace",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "issue", Value: issueNumber},
+		)
 		return WrapServiceError(err, "failed to prepare workspace")
 	}
-	e.logger.Debug("Workspace prepared", "issue", issueNumber)
+	e.logger.Debug(context.Background(), "Workspace prepared", logging.Field{Key: "issue", Value: issueNumber})
 	return nil
 }
 
@@ -185,26 +202,40 @@ func (e *workflowExecutor) setupTmuxSession(sessionName, windowName string) (boo
 	// セッションが存在しなければ作成
 	if !e.tmux.SessionExists(sessionName) {
 		if err := e.tmux.CreateSession(sessionName); err != nil {
-			e.logger.Error("Failed to create tmux session", "error", err, "session", sessionName)
+			e.logger.Error(context.Background(), "Failed to create tmux session",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "session", Value: sessionName},
+			)
 			return false, NewTmuxManagementError("create session", sessionName, err.Error())
 		}
-		e.logger.Debug("Created tmux session", "session", sessionName)
+		e.logger.Debug(context.Background(), "Created tmux session", logging.Field{Key: "session", Value: sessionName})
 	}
 
 	// ウィンドウが存在しなければ作成
 	exists, err := e.tmux.WindowExists(sessionName, windowName)
 	if err != nil {
-		e.logger.Error("Failed to check window existence", "error", err, "session", sessionName, "window", windowName)
+		e.logger.Error(context.Background(), "Failed to check window existence",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "session", Value: sessionName},
+			logging.Field{Key: "window", Value: windowName},
+		)
 		return false, NewTmuxManagementError("check window", windowName, err.Error())
 	}
 
 	windowCreated := false
 	if !exists {
 		if err := e.tmux.CreateWindow(sessionName, windowName); err != nil {
-			e.logger.Error("Failed to create tmux window", "error", err, "session", sessionName, "window", windowName)
+			e.logger.Error(context.Background(), "Failed to create tmux window",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "session", Value: sessionName},
+				logging.Field{Key: "window", Value: windowName},
+			)
 			return false, NewTmuxManagementError("create window", windowName, err.Error())
 		}
-		e.logger.Debug("Created tmux window", "session", sessionName, "window", windowName)
+		e.logger.Debug(context.Background(), "Created tmux window",
+			logging.Field{Key: "session", Value: sessionName},
+			logging.Field{Key: "window", Value: windowName},
+		)
 		windowCreated = true
 	}
 
@@ -216,17 +247,29 @@ func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, p
 	phaseCommand := e.getPhaseCommand(cfg, phase)
 	command := e.buildCommand(phaseCommand, issueNumber)
 
-	e.logger.Debug("Phase command details", "issue", issueNumber, "phase", phase, "phaseCommand", phaseCommand, "builtCommand", command)
+	e.logger.Debug(context.Background(), "Phase command details",
+		logging.Field{Key: "issue", Value: issueNumber},
+		logging.Field{Key: "phase", Value: string(phase)},
+		logging.Field{Key: "phaseCommand", Value: phaseCommand},
+		logging.Field{Key: "builtCommand", Value: command},
+	)
 
 	if command == "" {
-		e.logger.Info("No command defined for phase, skipping execution", "issue", issueNumber, "phase", phase)
+		e.logger.Info(context.Background(), "No command defined for phase, skipping execution",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "phase", Value: string(phase)},
+		)
 		return nil
 	}
 
 	// 最後のペインインデックスを取得（新しく作成されたペイン）
 	paneIndex, err := e.tmux.GetLastPaneIndex(sessionName, windowName)
 	if err != nil {
-		e.logger.Error("Failed to get last pane index", "error", err, "session", sessionName, "window", windowName)
+		e.logger.Error(context.Background(), "Failed to get last pane index",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "session", Value: sessionName},
+			logging.Field{Key: "window", Value: windowName},
+		)
 		return NewTmuxManagementError("get pane index", windowName, err.Error())
 	}
 
@@ -238,28 +281,51 @@ func (e *workflowExecutor) executeCommand(cfg *config.Config, issueNumber int, p
 		// tmuxペインの準備完了を待つ（コマンド実行の直前）
 		if cfg.Workflow.TmuxCommandDelay > 0 {
 			delay := time.Duration(cfg.Workflow.TmuxCommandDelay) * time.Second
-			e.logger.Debug("Waiting for tmux pane to be ready before command execution", "delay", delay, "issue", issueNumber)
+			e.logger.Debug(context.Background(), "Waiting for tmux pane to be ready before command execution",
+				logging.Field{Key: "delay", Value: delay},
+				logging.Field{Key: "issue", Value: issueNumber},
+			)
 			time.Sleep(delay)
 		}
 
 		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, cdCommand); err != nil {
-			e.logger.Error("Failed to send command", "error", err, "command", cdCommand, "pane", paneIndex)
+			e.logger.Error(context.Background(), "Failed to send command",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "command", Value: cdCommand},
+				logging.Field{Key: "pane", Value: paneIndex},
+			)
 			return NewCommandExecutionError(cdCommand, string(phase), issueNumber, err.Error())
 		}
-		e.logger.Info("Command sent with worktree cd", "issue", issueNumber, "phase", phase, "worktree", worktreeDir, "command", command)
+		e.logger.Info(context.Background(), "Command sent with worktree cd",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "phase", Value: string(phase)},
+			logging.Field{Key: "worktree", Value: worktreeDir},
+			logging.Field{Key: "command", Value: command},
+		)
 	} else {
 		// tmuxペインの準備完了を待つ（コマンド実行の直前）
 		if cfg.Workflow.TmuxCommandDelay > 0 {
 			delay := time.Duration(cfg.Workflow.TmuxCommandDelay) * time.Second
-			e.logger.Debug("Waiting for tmux pane to be ready before command execution", "delay", delay, "issue", issueNumber)
+			e.logger.Debug(context.Background(), "Waiting for tmux pane to be ready before command execution",
+				logging.Field{Key: "delay", Value: delay},
+				logging.Field{Key: "issue", Value: issueNumber},
+			)
 			time.Sleep(delay)
 		}
 
 		if err := e.tmux.SendCommand(sessionName, windowName, paneIndex, command); err != nil {
-			e.logger.Error("Failed to send command", "error", err, "command", command, "pane", paneIndex)
+			e.logger.Error(context.Background(), "Failed to send command",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "command", Value: command},
+				logging.Field{Key: "pane", Value: paneIndex},
+			)
 			return NewCommandExecutionError(command, string(phase), issueNumber, err.Error())
 		}
-		e.logger.Info("Command sent", "issue", issueNumber, "phase", phase, "command", command)
+		e.logger.Info(context.Background(), "Command sent",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "phase", Value: string(phase)},
+			logging.Field{Key: "command", Value: command},
+		)
 	}
 
 	return nil
@@ -282,7 +348,11 @@ func (e *workflowExecutor) managePane(sessionName, windowName string) error {
 		return NewTmuxManagementError("get pane count", windowName, err.Error())
 	}
 
-	e.logger.Debug("Current pane count", "session", sessionName, "window", windowName, "count", paneCount)
+	e.logger.Debug(context.Background(), "Current pane count",
+		logging.Field{Key: "session", Value: sessionName},
+		logging.Field{Key: "window", Value: windowName},
+		logging.Field{Key: "count", Value: paneCount},
+	)
 
 	// ペイン数が制限に達している場合、最も古いペインを削除
 	if paneCount >= e.maxPanes {
@@ -294,20 +364,30 @@ func (e *workflowExecutor) managePane(sessionName, windowName string) error {
 		if err := e.tmux.DeletePane(sessionName, windowName, firstPaneIndex); err != nil {
 			return NewTmuxManagementError("delete pane", windowName, err.Error())
 		}
-		e.logger.Debug("Deleted oldest pane", "session", sessionName, "window", windowName, "index", firstPaneIndex)
+		e.logger.Debug(context.Background(), "Deleted oldest pane",
+			logging.Field{Key: "session", Value: sessionName},
+			logging.Field{Key: "window", Value: windowName},
+			logging.Field{Key: "index", Value: firstPaneIndex},
+		)
 	}
 
 	// 新しいペインを作成
 	if err := e.tmux.CreatePane(sessionName, windowName); err != nil {
 		return NewTmuxManagementError("create pane", windowName, err.Error())
 	}
-	e.logger.Debug("Created new pane", "session", sessionName, "window", windowName)
+	e.logger.Debug(context.Background(), "Created new pane",
+		logging.Field{Key: "session", Value: sessionName},
+		logging.Field{Key: "window", Value: windowName},
+	)
 
 	// ペインをリサイズ
 	if err := e.tmux.ResizePanes(sessionName, windowName); err != nil {
 		return NewTmuxManagementError("resize panes", windowName, err.Error())
 	}
-	e.logger.Debug("Resized panes", "session", sessionName, "window", windowName)
+	e.logger.Debug(context.Background(), "Resized panes",
+		logging.Field{Key: "session", Value: sessionName},
+		logging.Field{Key: "window", Value: windowName},
+	)
 
 	return nil
 }

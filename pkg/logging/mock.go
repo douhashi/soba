@@ -146,3 +146,51 @@ func (m *MockLogger) CountLevel(level string) int {
 	}
 	return count
 }
+
+// Debug logs a debug message
+func (m *MockLogger) Debug(ctx context.Context, msg string, fields ...Field) {
+	record := slog.NewRecord(time.Now(), slog.LevelDebug, msg, 0)
+	for _, field := range fields {
+		record.AddAttrs(slog.Any(field.Key, field.Value))
+	}
+	m.Handle(ctx, record)
+}
+
+// Info logs an info message
+func (m *MockLogger) Info(ctx context.Context, msg string, fields ...Field) {
+	record := slog.NewRecord(time.Now(), slog.LevelInfo, msg, 0)
+	for _, field := range fields {
+		record.AddAttrs(slog.Any(field.Key, field.Value))
+	}
+	m.Handle(ctx, record)
+}
+
+// Warn logs a warning message
+func (m *MockLogger) Warn(ctx context.Context, msg string, fields ...Field) {
+	record := slog.NewRecord(time.Now(), slog.LevelWarn, msg, 0)
+	for _, field := range fields {
+		record.AddAttrs(slog.Any(field.Key, field.Value))
+	}
+	m.Handle(ctx, record)
+}
+
+// Error logs an error message
+func (m *MockLogger) Error(ctx context.Context, msg string, fields ...Field) {
+	record := slog.NewRecord(time.Now(), slog.LevelError, msg, 0)
+	for _, field := range fields {
+		record.AddAttrs(slog.Any(field.Key, field.Value))
+	}
+	m.Handle(ctx, record)
+}
+
+// WithFields creates a new logger with additional fields
+func (m *MockLogger) WithFields(fields ...Field) Logger {
+	// For mock, we just return the same logger
+	return m
+}
+
+// WithError creates a new logger with an error field
+func (m *MockLogger) WithError(err error) Logger {
+	// For mock, we just return the same logger
+	return m
+}

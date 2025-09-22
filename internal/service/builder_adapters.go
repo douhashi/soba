@@ -9,7 +9,7 @@ import (
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/service/builder"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // GitWorkspaceManagerAdapter adapts GitWorkspaceManager to builder interface
@@ -86,7 +86,7 @@ func (a *IssueWatcherAdapter) SetQueueManager(manager interface{}) {
 }
 
 func (a *IssueWatcherAdapter) SetLogger(log interface{}) {
-	if l, ok := log.(logger.Logger); ok {
+	if l, ok := log.(logging.Logger); ok {
 		a.IssueWatcher.SetLogger(l)
 	}
 }
@@ -107,7 +107,7 @@ func (a *PRWatcherAdapter) Start(ctx context.Context) error {
 }
 
 func (a *PRWatcherAdapter) SetLogger(log interface{}) {
-	if l, ok := log.(logger.Logger); ok {
+	if l, ok := log.(logging.Logger); ok {
 		a.PRWatcher.SetLogger(l)
 	}
 }

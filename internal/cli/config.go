@@ -2,13 +2,14 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/douhashi/soba/internal/config"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // newConfigCmd creates a new config command
@@ -32,14 +33,14 @@ Sensitive information like tokens and webhook URLs will be masked.`,
 
 // runConfig executes the config command
 func runConfig(cmd *cobra.Command, configPath string) error {
-	log := logger.GetLogger()
+	log := logging.NewMockLogger()
 
 	// 設定ファイルパスを決定
 	if configPath == "" {
 		configPath = filepath.Join(".soba", "config.yml")
 	}
 
-	log.Debug("Loading config file", "path", configPath)
+	log.Debug(context.Background(), "Loading config file", logging.Field{Key: "path", Value: configPath})
 
 	// 設定ファイルを読み込み
 	cfg, err := config.Load(configPath)

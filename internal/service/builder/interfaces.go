@@ -47,6 +47,16 @@ type PRWatcher interface {
 	SetLogger(logger interface{})
 }
 
+// ErrorHandler handles various errors in the system
+type ErrorHandler interface {
+	HandleGitHubClientError(err error) (GitHubClientInterface, error)
+	HandleGitClientError(workDir string, err error) (*MockGitClient, error)
+	ShouldContinueOnError(component string, err error) bool
+	LogError(ctx context.Context, msg string, err error)
+	LogWarning(ctx context.Context, msg string)
+	LogInfo(ctx context.Context, msg string)
+}
+
 // ClosedIssueCleanupService cleans up closed issues
 type ClosedIssueCleanupService interface {
 	Start(ctx context.Context) error

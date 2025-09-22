@@ -13,7 +13,7 @@ import (
 	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func newInitCmd() *cobra.Command {
@@ -37,19 +37,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 // runInitWithClient allows dependency injection for testing
 func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabelsClient) error {
-	log := logger.NewLogger(logger.GetLogger())
+	log := logging.NewMockLogger()
 
 	// Get current directory
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Error("Failed to get current directory", "error", err)
+		log.Error(ctx, "Failed to get current directory", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to get current directory")
 	}
 
 	// Check if current directory is a git repository
 	gitClient, err := git.NewClient(currentDir)
 	if err != nil {
-		log.Error("Current directory is not a git repository", "error", err)
+		log.Error(ctx, "Current directory is not a git repository", logging.Field{Key: "error", Value: err.Error()})
 		return errors.NewValidationError("current directory is not a git repository")
 	}
 
@@ -57,21 +57,24 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	repository, err := gitClient.GetRepository()
 	if err != nil {
 		// Log warning but continue with default
-		log.Warn("Failed to detect repository from git remote", "error", err)
+		log.Warn(ctx, "Failed to detect repository from git remote", logging.Field{Key: "error", Value: err.Error()})
 		repository = ""
 	} else {
-		log.Info("Detected repository from git remote", "repository", repository)
+		log.Info(ctx, "Detected repository from git remote", logging.Field{Key: "repository", Value: repository})
 	}
 
 	// Define paths
 	sobaDir := filepath.Join(currentDir, ".soba")
 	configPath := filepath.Join(sobaDir, "config.yml")
 
-	log.Debug("Initializing soba configuration", "directory", sobaDir, "config", configPath)
+	log.Debug(ctx, "Initializing soba configuration",
+		logging.Field{Key: "directory", Value: sobaDir},
+		logging.Field{Key: "config", Value: configPath},
+	)
 
 	// Check if config already exists
 	if _, err := os.Stat(configPath); err == nil {
-		log.Warn("Config file already exists", "path", configPath)
+		log.Warn(ctx, "Config file already exists", logging.Field{Key: "path", Value: configPath})
 		var conflictErr error = errors.NewConflictError("config file already exists")
 		conflictErr = errors.WithContext(conflictErr, "path", configPath)
 		return conflictErr
@@ -80,14 +83,14 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	// Create .soba directory if it doesn't exist
 	if err := os.MkdirAll(sobaDir, 0755); err != nil {
 		if os.IsPermission(err) {
-			log.Error("Permission denied", "directory", sobaDir)
+			log.Error(ctx, "Permission denied", logging.Field{Key: "directory", Value: sobaDir})
 			return infra.NewConfigLoadError(sobaDir, "permission denied: cannot create directory")
 		}
-		log.Error("Failed to create directory", "error", err)
+		log.Error(ctx, "Failed to create directory", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to create directory")
 	}
 
-	log.Debug("Created directory", "path", sobaDir)
+	log.Debug(ctx, "Created directory", logging.Field{Key: "path", Value: sobaDir})
 
 	// Generate config template
 	var configContent string
@@ -103,19 +106,19 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	// Write config file
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
 		if os.IsPermission(err) {
-			log.Error("Permission denied", "file", configPath)
+			log.Error(ctx, "Permission denied", logging.Field{Key: "file", Value: configPath})
 			return infra.NewConfigLoadError(configPath, "permission denied: cannot write file")
 		}
-		log.Error("Failed to write config file", "error", err)
+		log.Error(ctx, "Failed to write config file", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to write config file")
 	}
 
-	log.Info("Successfully created config file", "path", configPath)
+	log.Info(ctx, "Successfully created config file", logging.Field{Key: "path", Value: configPath})
 
 	// Try to create GitHub labels if repository is configured
 	if err := createGitHubLabelsIfConfigured(ctx, configPath, gitHubClient, log); err != nil {
 		// Log the error but don't fail the init command
-		log.Warn("Failed to create GitHub labels", "error", err)
+		log.Warn(ctx, "Failed to create GitHub labels", logging.Field{Key: "error", Value: err.Error()})
 	}
 
 	return nil
@@ -128,7 +131,7 @@ type GitHubLabelsClient interface {
 }
 
 // createGitHubLabelsIfConfigured はGitHubリポジトリが設定されている場合にラベルを作成する
-func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, client GitHubLabelsClient, log logger.Logger) error {
+func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, client GitHubLabelsClient, log logging.Logger) error {
 	// 設定ファイルを読み込む
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -137,14 +140,14 @@ func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, clie
 
 	// リポジトリが設定されていない場合はスキップ
 	if cfg.GitHub.Repository == "" {
-		log.Debug("No GitHub repository configured, skipping label creation")
+		log.Debug(ctx, "No GitHub repository configured, skipping label creation")
 		return nil
 	}
 
 	// リポジトリ文字列からowner/repoを分離
 	parts := strings.Split(cfg.GitHub.Repository, "/")
 	if len(parts) != 2 {
-		log.Warn("Invalid repository format", "repository", cfg.GitHub.Repository)
+		log.Warn(ctx, "Invalid repository format", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
 		return nil
 	}
 	owner, repo := parts[0], parts[1]
@@ -161,7 +164,7 @@ func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, clie
 		client = githubClient
 	}
 
-	log.Info("Creating GitHub labels", "repository", cfg.GitHub.Repository)
+	log.Info(ctx, "Creating GitHub labels", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
 
 	// 既存のラベルを取得
 	existingLabels, err := client.ListLabels(ctx, owner, repo)
@@ -182,25 +185,28 @@ func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, clie
 
 	for _, labelRequest := range sobaLabels {
 		if existingLabelNames[labelRequest.Name] {
-			log.Debug("Label already exists, skipping", "label", labelRequest.Name)
+			log.Debug(ctx, "Label already exists, skipping", logging.Field{Key: "label", Value: labelRequest.Name})
 			skippedCount++
 			continue
 		}
 
 		_, err := client.CreateLabel(ctx, owner, repo, labelRequest)
 		if err != nil {
-			log.Warn("Failed to create label", "label", labelRequest.Name, "error", err)
+			log.Warn(ctx, "Failed to create label",
+				logging.Field{Key: "label", Value: labelRequest.Name},
+				logging.Field{Key: "error", Value: err.Error()},
+			)
 			continue
 		}
 
-		log.Debug("Created label", "label", labelRequest.Name)
+		log.Debug(ctx, "Created label", logging.Field{Key: "label", Value: labelRequest.Name})
 		createdCount++
 	}
 
-	log.Info("GitHub labels creation completed",
-		"created", createdCount,
-		"skipped", skippedCount,
-		"total", len(sobaLabels),
+	log.Info(ctx, "GitHub labels creation completed",
+		logging.Field{Key: "created", Value: createdCount},
+		logging.Field{Key: "skipped", Value: skippedCount},
+		logging.Field{Key: "total", Value: len(sobaLabels)},
 	)
 
 	return nil

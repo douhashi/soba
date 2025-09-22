@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/douhashi/soba/internal/infra"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 const (
@@ -22,14 +22,14 @@ type ClientImpl struct {
 	httpClient    *http.Client
 	tokenProvider TokenProvider
 	baseURL       string
-	logger        logger.Logger
+	logger        logging.Logger
 }
 
 // ClientOptions はクライアントのオプション
 type ClientOptions struct {
 	BaseURL string        // GitHub Enterprise用のカスタムURL
 	Timeout time.Duration // HTTPクライアントのタイムアウト
-	Logger  logger.Logger // ロガー
+	Logger  logging.Logger // ロガー
 }
 
 // NewClient は新しいGitHub APIクライアントを作成する
@@ -54,7 +54,9 @@ func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*ClientImpl, e
 
 	l := opts.Logger
 	if l == nil {
-		l = logger.NewNopLogger()
+		// デフォルトロガーの作成
+		factory, _ := logging.NewFactory(logging.Config{})
+		l = factory.CreateComponentLogger("github-client")
 	}
 
 	return &ClientImpl{
@@ -81,9 +83,9 @@ func (c *ClientImpl) doRequest(ctx context.Context, req *http.Request) (*http.Re
 	req.Header.Set("Content-Type", "application/json")
 
 	// リクエスト情報をログ出力
-	c.logger.Debug("GitHub API request",
-		"method", req.Method,
-		"url", req.URL.String(),
+	c.logger.Debug(ctx, "GitHub API request",
+		logging.Field{Key: "method", Value: req.Method},
+		logging.Field{Key: "url", Value: req.URL.String()},
 	)
 
 	// リクエスト実行
@@ -93,9 +95,9 @@ func (c *ClientImpl) doRequest(ctx context.Context, req *http.Request) (*http.Re
 	}
 
 	// レスポンス情報をログ出力
-	c.logger.Debug("GitHub API response",
-		"status", resp.StatusCode,
-		"url", req.URL.String(),
+	c.logger.Debug(ctx, "GitHub API response",
+		logging.Field{Key: "status", Value: resp.StatusCode},
+		logging.Field{Key: "url", Value: req.URL.String()},
 	)
 
 	return resp, nil

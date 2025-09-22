@@ -8,7 +8,7 @@ import (
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // GitHubClientInterface はGitHubクライアントのインターフェース
@@ -38,7 +38,7 @@ func NewIssueProcessor(client GitHubClientInterface, executor WorkflowExecutor) 
 
 // ProcessIssue processes a single issue
 func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, issue github.Issue) error {
-	log := logger.NewNopLogger() // テスト環境でのロガー競合を避けるためNopLoggerを使用
+	log := logging.NewMockLogger() // テスト環境でのロガー競合を避けるためMockLoggerを使用
 
 	// owner/repoを設定から取得して設定
 	if cfg.GitHub.Repository != "" {
@@ -56,7 +56,7 @@ func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, i
 			Logger: log,
 		})
 		if err != nil {
-			log.Error("Failed to create GitHub client", "error", err)
+			log.Error(ctx, "Failed to create GitHub client", logging.Field{Key: "error", Value: err.Error()})
 			return errors.WrapInternal(err, "failed to create GitHub client")
 		}
 		p.githubClient = client
@@ -71,15 +71,26 @@ func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, i
 	// 現在のフェーズを判定
 	phase, err := domain.GetCurrentPhaseFromLabels(labelNames)
 	if err != nil {
-		log.Debug("Failed to get current phase", "error", err, "issue", issue.Number)
+		log.Debug(ctx, "Failed to get current phase",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "issue", Value: issue.Number},
+		)
 		return errors.WrapInternal(err, "failed to get current phase")
 	}
 
-	log.Info("Processing issue", "issue", issue.Number, "phase", phase, "labels", labelNames)
+	log.Info(ctx, "Processing issue",
+		logging.Field{Key: "issue", Value: issue.Number},
+		logging.Field{Key: "phase", Value: phase},
+		logging.Field{Key: "labels", Value: labelNames},
+	)
 
 	// WorkflowExecutorを使ってフェーズを実行
 	if err := p.executor.ExecutePhase(ctx, cfg, issue.Number, phase); err != nil {
-		log.Error("Failed to execute phase", "error", err, "issue", issue.Number, "phase", phase)
+		log.Error(ctx, "Failed to execute phase",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "issue", Value: issue.Number},
+			logging.Field{Key: "phase", Value: phase},
+		)
 		return errors.WrapInternal(err, "failed to execute phase")
 	}
 
@@ -88,7 +99,7 @@ func (p *issueProcessor) ProcessIssue(ctx context.Context, cfg *config.Config, i
 
 // Process processes issues from GitHub repository
 func (p *issueProcessor) Process(ctx context.Context, cfg *config.Config) error {
-	log := logger.NewLogger(logger.GetLogger())
+	log := logging.NewMockLogger()
 
 	// リポジトリが設定されているかチェック
 	if cfg.GitHub.Repository == "" {
@@ -111,13 +122,13 @@ func (p *issueProcessor) Process(ctx context.Context, cfg *config.Config) error 
 			Logger: log,
 		})
 		if err != nil {
-			log.Error("Failed to create GitHub client", "error", err)
+			log.Error(ctx, "Failed to create GitHub client", logging.Field{Key: "error", Value: err.Error()})
 			return errors.WrapInternal(err, "failed to create GitHub client")
 		}
 		p.githubClient = client
 	}
 
-	log.Debug("Processing issues", "repository", cfg.GitHub.Repository)
+	log.Debug(ctx, "Processing issues", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
 
 	// Openなissueを取得
 	options := &github.ListIssuesOptions{
@@ -126,19 +137,22 @@ func (p *issueProcessor) Process(ctx context.Context, cfg *config.Config) error 
 
 	issues, _, err := p.githubClient.ListOpenIssues(ctx, owner, repo, options)
 	if err != nil {
-		log.Error("Failed to list issues", "error", err)
+		log.Error(ctx, "Failed to list issues", logging.Field{Key: "error", Value: err.Error()})
 		return errors.WrapInternal(err, "failed to list issues")
 	}
 
-	log.Info("Retrieved issues", "count", len(issues), "repository", cfg.GitHub.Repository)
+	log.Info(ctx, "Retrieved issues",
+		logging.Field{Key: "count", Value: len(issues)},
+		logging.Field{Key: "repository", Value: cfg.GitHub.Repository},
+	)
 
 	// ここで各issueに対する処理を実装
 	// 現在は取得とログ出力のみ
 	for _, issue := range issues {
-		log.Debug("Found open issue",
-			"number", issue.Number,
-			"title", issue.Title,
-			"state", issue.State,
+		log.Debug(ctx, "Found open issue",
+			logging.Field{Key: "number", Value: issue.Number},
+			logging.Field{Key: "title", Value: issue.Title},
+			logging.Field{Key: "state", Value: issue.State},
 		)
 	}
 
@@ -171,7 +185,7 @@ func (p *issueProcessor) Configure(cfg *config.Config) error {
 
 // UpdateLabels はIssueのラベルを更新する（削除→追加）
 func (p *issueProcessor) UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
-	log := logger.NewLogger(logger.GetLogger())
+	log := logging.NewMockLogger()
 
 	// GitHubクライアントが初期化されているか確認
 	if p.githubClient == nil {
@@ -186,19 +200,33 @@ func (p *issueProcessor) UpdateLabels(ctx context.Context, issueNumber int, remo
 	// 古いラベルを削除（存在しない場合はスキップ）
 	if removeLabel != "" {
 		if err := p.githubClient.RemoveLabelFromIssue(ctx, p.owner, p.repo, issueNumber, removeLabel); err != nil {
-			log.Error("Failed to remove label", "error", err, "issue", issueNumber, "label", removeLabel)
+			log.Error(ctx, "Failed to remove label",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "label", Value: removeLabel},
+			)
 			return errors.WrapInternal(err, "failed to remove label")
 		}
-		log.Debug("Removed label from issue", "issue", issueNumber, "label", removeLabel)
+		log.Debug(ctx, "Removed label from issue",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "label", Value: removeLabel},
+		)
 	}
 
 	// 新しいラベルを追加
 	if addLabel != "" {
 		if err := p.githubClient.AddLabelToIssue(ctx, p.owner, p.repo, issueNumber, addLabel); err != nil {
-			log.Error("Failed to add label", "error", err, "issue", issueNumber, "label", addLabel)
+			log.Error(ctx, "Failed to add label",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "label", Value: addLabel},
+			)
 			return errors.WrapInternal(err, "failed to add label")
 		}
-		log.Debug("Added label to issue", "issue", issueNumber, "label", addLabel)
+		log.Debug(ctx, "Added label to issue",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "label", Value: addLabel},
+		)
 	}
 
 	return nil

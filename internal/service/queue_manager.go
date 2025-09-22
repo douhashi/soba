@@ -6,7 +6,7 @@ import (
 
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // QueueManager はキュー管理機能を提供する
@@ -14,7 +14,7 @@ type QueueManager struct {
 	client GitHubClientInterface
 	owner  string
 	repo   string
-	logger logger.Logger
+	logger logging.Logger
 }
 
 // NewQueueManager は新しいQueueManagerを作成する
@@ -23,12 +23,12 @@ func NewQueueManager(client GitHubClientInterface, owner, repo string) *QueueMan
 		client: client,
 		owner:  owner,
 		repo:   repo,
-		logger: logger.NewNopLogger(),
+		logger: logging.NewMockLogger(),
 	}
 }
 
 // SetLogger はロガーを設定する
-func (q *QueueManager) SetLogger(log logger.Logger) {
+func (q *QueueManager) SetLogger(log logging.Logger) {
 	q.logger = log
 }
 
@@ -36,14 +36,14 @@ func (q *QueueManager) SetLogger(log logger.Logger) {
 func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Issue) error {
 	// 1. アクティブなタスクがあるか確認
 	if q.hasActiveTask(issues) {
-		q.logger.Debug("Active task exists, skipping enqueue")
+		q.logger.Debug(ctx, "Active task exists, skipping enqueue")
 		return nil
 	}
 
 	// 2. soba:todoのIssueを収集
 	todoIssues := q.collectTodoIssues(issues)
 	if len(todoIssues) == 0 {
-		q.logger.Debug("No todo issues found")
+		q.logger.Debug(ctx, "No todo issues found")
 		return nil
 	}
 
@@ -51,7 +51,7 @@ func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Iss
 	targetIssue := q.selectMinimumIssue(todoIssues)
 
 	// 4. ラベル変更（soba:todo → soba:queued）
-	q.logger.Info("Enqueueing issue", "issue", targetIssue.Number)
+	q.logger.Info(ctx, "Enqueueing issue", logging.Field{Key: "issue", Value: targetIssue.Number})
 	return q.updateLabels(ctx, targetIssue.Number, "soba:todo", "soba:queued")
 }
 
@@ -96,19 +96,33 @@ func (q *QueueManager) updateLabels(ctx context.Context, issueNumber int, remove
 	// 古いラベルを削除
 	if removeLabel != "" {
 		if err := q.client.RemoveLabelFromIssue(ctx, q.owner, q.repo, issueNumber, removeLabel); err != nil {
-			q.logger.Error("Failed to remove label", "error", err, "issue", issueNumber, "label", removeLabel)
+			q.logger.Error(ctx, "Failed to remove label",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "label", Value: removeLabel},
+			)
 			return errors.WrapInternal(err, "failed to remove label")
 		}
-		q.logger.Debug("Removed label from issue", "issue", issueNumber, "label", removeLabel)
+		q.logger.Debug(ctx, "Removed label from issue",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "label", Value: removeLabel},
+		)
 	}
 
 	// 新しいラベルを追加
 	if addLabel != "" {
 		if err := q.client.AddLabelToIssue(ctx, q.owner, q.repo, issueNumber, addLabel); err != nil {
-			q.logger.Error("Failed to add label", "error", err, "issue", issueNumber, "label", addLabel)
+			q.logger.Error(ctx, "Failed to add label",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issueNumber},
+				logging.Field{Key: "label", Value: addLabel},
+			)
 			return errors.WrapInternal(err, "failed to add label")
 		}
-		q.logger.Debug("Added label to issue", "issue", issueNumber, "label", addLabel)
+		q.logger.Debug(ctx, "Added label to issue",
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "label", Value: addLabel},
+		)
 	}
 
 	return nil

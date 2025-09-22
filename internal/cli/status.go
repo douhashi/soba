@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -8,7 +9,7 @@ import (
 
 	"github.com/douhashi/soba/internal/service"
 	"github.com/douhashi/soba/internal/service/builder"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -26,13 +27,23 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	log := logger.GetLogger()
-	log.Debug("Running status command")
+	log := logging.NewMockLogger()
+	log.Debug(context.Background(), "Running status command")
+
+	// Create logging factory
+	logConfig := logging.Config{
+		Level:  "info",
+		Format: "text",
+	}
+	logFactory, err := logging.NewFactory(logConfig)
+	if err != nil {
+		logFactory = &logging.Factory{}
+	}
 
 	// Create service builder
-	sb := builder.NewServiceBuilder()
-	if err := sb.BuildDefault(); err != nil {
-		return fmt.Errorf("failed to build default services: %w", err)
+	sb := builder.NewServiceBuilder(logFactory)
+	if buildErr := sb.BuildDefault(context.Background()); buildErr != nil {
+		return fmt.Errorf("failed to build default services: %w", buildErr)
 	}
 
 	// Get the factory and set dependencies

@@ -16,7 +16,7 @@ import (
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/internal/service/builder"
 	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 // DaemonService provides daemon functionality for Issue monitoring
@@ -42,6 +42,7 @@ type daemonService struct {
 	prWatcher                 *PRWatcher
 	closedIssueCleanupService *ClosedIssueCleanupService
 	tmux                      tmux.TmuxClient
+	logger                    logging.Logger
 }
 
 // init initializes the service factory
@@ -51,11 +52,21 @@ func init() {
 
 // NewDaemonService creates a new daemon service using ServiceBuilder
 func NewDaemonService() DaemonService {
-	serviceBuilder := builder.NewServiceBuilder()
-	service, err := serviceBuilder.Build()
+	// デフォルトのlogFactoryを作成
+	logFactory, err := logging.NewFactory(logging.Config{})
 	if err != nil {
-		log := logger.GetLogger()
-		log.Error("Failed to create daemon service", "error", err)
+		// Fallback to minimal service if logging fails
+		return createFallbackService()
+	}
+
+	serviceBuilder := builder.NewServiceBuilder(logFactory)
+	ctx := context.Background()
+	service, err := serviceBuilder.Build(ctx)
+	if err != nil {
+		logger := logFactory.CreateComponentLogger("daemon")
+		logger.Error(ctx, "Failed to create daemon service",
+			logging.Field{Key: "error", Value: err.Error()},
+		)
 		// Return minimal fallback service
 		return createFallbackService()
 	}
@@ -70,6 +81,7 @@ func NewDaemonServiceWithDependencies(
 	prWatcher *PRWatcher,
 	cleanupService *ClosedIssueCleanupService,
 	tmuxClient tmux.TmuxClient,
+	logger logging.Logger,
 ) DaemonService {
 	return &daemonService{
 		workDir:                   workDir,
@@ -78,21 +90,25 @@ func NewDaemonServiceWithDependencies(
 		prWatcher:                 prWatcher,
 		closedIssueCleanupService: cleanupService,
 		tmux:                      tmuxClient,
+		logger:                    logger,
 	}
 }
 
 // createFallbackService creates minimal working service for emergency fallback
 func createFallbackService() DaemonService {
 	workDir, _ := os.Getwd()
+	factory, _ := logging.NewFactory(logging.Config{})
+	logger := factory.CreateComponentLogger("daemon-fallback")
 	return &daemonService{
 		workDir: workDir,
+		logger:  logger,
 		// All services initialized as nil - configureAndStartWatchers handles nil checks
 	}
 }
 
 // initializeTmuxSession はtmuxセッションを初期化する
 func (d *daemonService) initializeTmuxSession(cfg *config.Config) error {
-	log := logger.NewLogger(logger.GetLogger())
+	ctx := context.Background()
 
 	// リポジトリ情報からセッション名を生成
 	sessionName := d.generateSessionName(cfg.GitHub.Repository)
@@ -100,12 +116,19 @@ func (d *daemonService) initializeTmuxSession(cfg *config.Config) error {
 	// セッションが存在しない場合は作成
 	if !d.tmux.SessionExists(sessionName) {
 		if err := d.tmux.CreateSession(sessionName); err != nil {
-			log.Error("Failed to create tmux session", "error", err, "session", sessionName)
+			d.logger.Error(ctx, "Failed to create tmux session",
+				logging.Field{Key: "error", Value: err},
+				logging.Field{Key: "session", Value: sessionName},
+			)
 			return fmt.Errorf("failed to create tmux session %s: %w", sessionName, err)
 		}
-		log.Info("Created tmux session", "session", sessionName)
+		d.logger.Info(ctx, "Created tmux session",
+			logging.Field{Key: "session", Value: sessionName},
+		)
 	} else {
-		log.Debug("Tmux session already exists", "session", sessionName)
+		d.logger.Debug(ctx, "Tmux session already exists",
+			logging.Field{Key: "session", Value: sessionName},
+		)
 	}
 
 	return nil
@@ -133,7 +156,7 @@ func (d *daemonService) generateSessionName(repository string) string {
 
 // initializeLogging はログ出力を初期化する共通メソッド
 func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
-	log := logger.NewLogger(logger.GetLogger())
+	ctx := context.Background()
 
 	// 空のパスの場合は何もしない
 	if cfg.Log.OutputPath == "" {
@@ -144,7 +167,9 @@ func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
 	sobaDir := filepath.Join(d.workDir, ".soba")
 	logsDir := filepath.Join(sobaDir, "logs")
 	if err := os.MkdirAll(logsDir, 0755); err != nil {
-		log.Error("Failed to create logs directory", "error", err)
+		d.logger.Error(ctx, "Failed to create logs directory",
+			logging.Field{Key: "error", Value: err},
+		)
 		return "", errors.WrapInternal(err, "failed to create logs directory")
 	}
 
@@ -160,26 +185,24 @@ func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
 		logPath = filepath.Join(d.workDir, logPath)
 	}
 
-	// ログファイル初期化（MultiWriterで標準出力とファイル両方に出力）
-	if err := logger.InitWithFile(logger.Config{
-		Environment: "production",
-		Level:       logger.ParseLevel(os.Getenv("LOG_LEVEL")),
-		Output:      os.Stdout,
-		FilePath:    logPath,
-	}); err != nil {
-		log.Error("Failed to initialize log file", "error", err, "path", logPath)
+	// ログファイル出力用の新しいFactoryを作成
+	fileLogFactory, err := logging.NewFactory(logging.Config{
+		Level:  os.Getenv("LOG_LEVEL"),
+		Format: "json",
+		Output: logPath,
+	})
+	if err != nil {
+		d.logger.Error(ctx, "Failed to initialize log file",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "path", Value: logPath},
+		)
 		// ログファイル初期化に失敗してもデーモンは継続（stdout出力のみ）
+	} else {
+		// ファイル出力用のロガーに切り替え
+		d.logger = fileLogFactory.CreateComponentLogger("daemon")
 	}
 
-	// 古いログファイルのクリーンアップ
-	if cfg.Log.RetentionCount > 0 {
-		logDir := filepath.Dir(logPath)
-		pattern := "soba-*.log"
-		if err := logger.CleanupOldLogFiles(logDir, pattern, cfg.Log.RetentionCount); err != nil {
-			log.Warn("Failed to cleanup old log files", "error", err)
-			// クリーンアップに失敗してもデーモンは継続
-		}
-	}
+	// 古いログファイルのクリーンアップはlumberjackが自動で行うため不要
 
 	return logPath, nil
 }
@@ -192,13 +215,14 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 		return err
 	}
 
-	// ログ初期化後に新しいロガーインスタンスを作成（ファイル出力設定を含む）
-	log := logger.NewLogger(logger.GetLogger())
+	// ログ初期化後ログ出力を開始
 
 	if logPath != "" {
-		log.Info("Starting Issue monitoring in foreground mode", "logFile", logPath)
+		d.logger.Info(ctx, "Starting Issue monitoring in foreground mode",
+			logging.Field{Key: "logFile", Value: logPath},
+		)
 	} else {
-		log.Info("Starting Issue monitoring in foreground mode")
+		d.logger.Info(ctx, "Starting Issue monitoring in foreground mode")
 	}
 
 	// tmuxセッションを初期化
@@ -207,16 +231,16 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 	}
 
 	// watchers設定と起動（共通処理を使用）
-	return d.configureAndStartWatchers(ctx, cfg, log)
+	return d.configureAndStartWatchers(ctx, cfg)
 }
 
 // configureAndStartWatchers はwatchersの設定と起動を行う共通処理
-func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *config.Config, log logger.Logger) error {
+func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *config.Config) error {
 	// IssueWatcherに設定を反映
 	if d.watcher != nil {
 		d.watcher.config = cfg
 		d.watcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-		d.watcher.SetLogger(log)
+		d.watcher.SetLogger(d.logger)
 	}
 
 	// QueueManagerにowner/repoを設定
@@ -225,7 +249,7 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 		if len(parts) == 2 {
 			d.watcher.queueManager.owner = parts[0]
 			d.watcher.queueManager.repo = parts[1]
-			d.watcher.queueManager.SetLogger(log)
+			d.watcher.queueManager.SetLogger(d.logger)
 		}
 	}
 
@@ -233,7 +257,7 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 	if d.prWatcher != nil {
 		d.prWatcher.config = cfg
 		d.prWatcher.interval = time.Duration(cfg.Workflow.Interval) * time.Second
-		d.prWatcher.SetLogger(log)
+		d.prWatcher.SetLogger(d.logger)
 	}
 
 	// ClosedIssueCleanupServiceを設定
@@ -313,8 +337,7 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 		return err
 	}
 
-	// ログ初期化後に新しいロガーインスタンスを作成（ファイル出力設定を含む）
-	log := logger.NewLogger(logger.GetLogger())
+	// ログ初期化後ログ出力を開始
 
 	// tmuxセッションを初期化
 	if err := d.initializeTmuxSession(cfg); err != nil {
@@ -323,30 +346,36 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 
 	// PIDファイルを作成
 	if err := d.createPIDFile(); err != nil {
-		log.Error("Failed to create PID file", "error", err)
+		d.logger.Error(ctx, "Failed to create PID file",
+			logging.Field{Key: "error", Value: err},
+		)
 		return err
 	}
 
-	log.Info("Daemon started successfully", "logFile", logPath)
+	d.logger.Info(ctx, "Daemon started successfully",
+		logging.Field{Key: "logFile", Value: logPath},
+	)
 
 	// watchers設定と起動（共通処理を使用）
-	return d.configureAndStartWatchers(ctx, cfg, log)
+	return d.configureAndStartWatchers(ctx, cfg)
 }
 
 // forkAndExit forks a child process and exits the parent
 func (d *daemonService) forkAndExit() error {
-	log := logger.NewLogger(logger.GetLogger())
+	ctx := context.Background()
 
 	// テスト環境ではos.Exitを呼ばない
 	if os.Getenv(envTestMode) == envValueTrue {
-		log.Debug("Test mode: skipping fork")
+		d.logger.Debug(ctx, "Test mode: skipping fork")
 		return nil
 	}
 
 	// 現在の実行ファイルパスを取得
 	execPath, err := os.Executable()
 	if err != nil {
-		log.Error("Failed to get executable path", "error", err)
+		d.logger.Error(ctx, "Failed to get executable path",
+			logging.Field{Key: "error", Value: err},
+		)
 		return errors.WrapInternal(err, "failed to get executable path")
 	}
 
@@ -370,11 +399,15 @@ func (d *daemonService) forkAndExit() error {
 
 	// 子プロセスを起動
 	if err := cmd.Start(); err != nil {
-		log.Error("Failed to start background process", "error", err)
+		d.logger.Error(ctx, "Failed to start background process",
+			logging.Field{Key: "error", Value: err},
+		)
 		return errors.WrapInternal(err, "failed to start background process")
 	}
 
-	log.Info("Background process started", "pid", cmd.Process.Pid)
+	d.logger.Info(ctx, "Background process started",
+		logging.Field{Key: "pid", Value: cmd.Process.Pid},
+	)
 
 	// 親プロセスを終了
 	os.Exit(0)
@@ -441,62 +474,82 @@ func (d *daemonService) removePIDFile() error {
 
 // Stop stops the running daemon process
 func (d *daemonService) Stop(ctx context.Context, repository string) error {
-	log := logger.NewLogger(logger.GetLogger())
 	pidFile := filepath.Join(d.workDir, ".soba", "soba.pid")
 
 	// PIDファイルが存在しない場合はデーモンが実行されていない
 	if _, err := os.Stat(pidFile); os.IsNotExist(err) {
-		log.Warn("Daemon is not running (PID file not found)")
+		d.logger.Warn(ctx, "Daemon is not running (PID file not found)")
 		return errors.NewNotFoundError("daemon is not running")
 	}
 
 	// PIDファイルを読み込み
 	content, err := os.ReadFile(pidFile)
 	if err != nil {
-		log.Error("Failed to read PID file", "error", err)
+		d.logger.Error(ctx, "Failed to read PID file",
+			logging.Field{Key: "error", Value: err},
+		)
 		return errors.WrapInternal(err, "failed to read PID file")
 	}
 
 	pid, err := strconv.Atoi(strings.TrimSpace(string(content)))
 	if err != nil {
-		log.Error("Invalid PID in file", "content", string(content))
+		d.logger.Error(ctx, "Invalid PID in file",
+			logging.Field{Key: "content", Value: string(content)},
+		)
 		return errors.NewValidationError("invalid PID in file")
 	}
 
 	// プロセスが存在するかチェック
 	process, err := os.FindProcess(pid)
 	if err != nil {
-		log.Error("Process not found", "pid", pid, "error", err)
+		d.logger.Error(ctx, "Process not found",
+			logging.Field{Key: "pid", Value: pid},
+			logging.Field{Key: "error", Value: err},
+		)
 		return errors.NewNotFoundError("process not found")
 	}
 
 	// プロセスが実際に実行中かチェック（Unix系OSの場合）
 	if err := process.Signal(syscall.Signal(0)); err != nil {
-		log.Warn("Process is not running", "pid", pid)
+		d.logger.Warn(ctx, "Process is not running",
+			logging.Field{Key: "pid", Value: pid},
+		)
 		// PIDファイルを削除してエラーを返す
 		d.removePIDFile()
 		return errors.NewNotFoundError("process not found")
 	}
 
-	log.Info("Stopping daemon process", "pid", pid)
+	d.logger.Info(ctx, "Stopping daemon process",
+		logging.Field{Key: "pid", Value: pid},
+	)
 
 	// まずSIGTERMを送信してグレースフルシャットダウンを試みる
 	if err := process.Signal(syscall.SIGTERM); err != nil {
-		log.Warn("Failed to send SIGTERM", "pid", pid, "error", err)
+		d.logger.Warn(ctx, "Failed to send SIGTERM",
+			logging.Field{Key: "pid", Value: pid},
+			logging.Field{Key: "error", Value: err},
+		)
 	} else {
 		// プロセスが終了するまで最大10秒待つ
 		for i := 0; i < 100; i++ {
 			time.Sleep(100 * time.Millisecond)
 			if err := process.Signal(syscall.Signal(0)); err != nil {
 				// プロセスが終了した
-				log.Info("Daemon process stopped gracefully", "pid", pid)
+				d.logger.Info(ctx, "Daemon process stopped gracefully",
+					logging.Field{Key: "pid", Value: pid},
+				)
 				break
 			}
 			if i == 99 {
 				// タイムアウト - SIGKILLを送信
-				log.Warn("Process did not stop gracefully, sending SIGKILL", "pid", pid)
+				d.logger.Warn(ctx, "Process did not stop gracefully, sending SIGKILL",
+					logging.Field{Key: "pid", Value: pid},
+				)
 				if err := process.Signal(syscall.SIGKILL); err != nil {
-					log.Error("Failed to kill process", "pid", pid, "error", err)
+					d.logger.Error(ctx, "Failed to kill process",
+						logging.Field{Key: "pid", Value: pid},
+						logging.Field{Key: "error", Value: err},
+					)
 				}
 			}
 		}
@@ -505,18 +558,25 @@ func (d *daemonService) Stop(ctx context.Context, repository string) error {
 	// tmuxセッションのクリーンアップ
 	sessionName := d.generateSessionName(repository)
 	if d.tmux != nil && d.tmux.SessionExists(sessionName) {
-		log.Info("Cleaning up tmux session", "session", sessionName)
+		d.logger.Info(ctx, "Cleaning up tmux session",
+			logging.Field{Key: "session", Value: sessionName},
+		)
 		if err := d.tmux.KillSession(sessionName); err != nil {
 			// tmuxエラーは警告として扱い、停止処理は継続
-			log.Warn("Failed to kill tmux session", "session", sessionName, "error", err)
+			d.logger.Warn(ctx, "Failed to kill tmux session",
+				logging.Field{Key: "session", Value: sessionName},
+				logging.Field{Key: "error", Value: err},
+			)
 		}
 	}
 
 	// PIDファイルを削除
 	if err := d.removePIDFile(); err != nil {
-		log.Warn("Failed to remove PID file", "error", err)
+		d.logger.Warn(ctx, "Failed to remove PID file",
+			logging.Field{Key: "error", Value: err},
+		)
 	}
 
-	log.Info("Daemon stopped successfully")
+	d.logger.Info(ctx, "Daemon stopped successfully")
 	return nil
 }

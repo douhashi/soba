@@ -11,7 +11,7 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/domain"
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/pkg/logger"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestIntegration_FullWorkflow(t *testing.T) {
@@ -106,7 +106,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 	// 自動遷移でplanフェーズも実行される場合
 	mockProcessorUpdater.On("UpdateLabels", mock.Anything, 1, "soba:queued", "soba:planning").Return(nil).Maybe()
 
-	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessorUpdater, logger.NewNopLogger())
+	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessorUpdater, logging.NewMockLogger())
 
 	// ProcessorにProcessIssueを実装するためのモックを使用
 	processor := &MockIssueProcessor{
@@ -190,7 +190,7 @@ func TestIntegration_ErrorHandling(t *testing.T) {
 		},
 	}
 
-	executor := NewWorkflowExecutorWithLogger(mockTmux, mockWorkspace, mockProcessor, logger.NewNopLogger())
+	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor, logging.NewMockLogger())
 	processor := NewIssueProcessor(mockGitHub, executor)
 
 	watcher := NewIssueWatcher(mockGitHub, cfg)
