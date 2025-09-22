@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -223,6 +224,10 @@ func (d *daemonService) configureAndStartWatchers(ctx context.Context, cfg *conf
 	return nil
 }
 
+const envBackgroundProcess = "SOBA_BACKGROUND_PROCESS"
+const envTestMode = "SOBA_TEST_MODE"
+const envValueTrue = "true"
+
 // StartDaemon starts Issue monitoring in daemon mode
 func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) error {
 	log := logger.NewLogger(logger.GetLogger())
@@ -232,6 +237,13 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 		return errors.NewConflictError("daemon is already running")
 	}
 
+	// 環境変数でバックグラウンドプロセスか判定
+	if os.Getenv(envBackgroundProcess) != envValueTrue {
+		// 親プロセス: 子プロセスを起動
+		return d.forkAndExit()
+	}
+
+	// 子プロセス: デーモン処理を継続
 	// .sobaディレクトリとlogsディレクトリを作成
 	sobaDir := filepath.Join(d.workDir, ".soba")
 	logsDir := filepath.Join(sobaDir, "logs")
@@ -287,6 +299,60 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 
 	// watchers設定と起動（共通処理を使用）
 	return d.configureAndStartWatchers(ctx, cfg, log)
+}
+
+// forkAndExit forks a child process and exits the parent
+func (d *daemonService) forkAndExit() error {
+	log := logger.NewLogger(logger.GetLogger())
+
+	// テスト環境ではos.Exitを呼ばない
+	if os.Getenv(envTestMode) == envValueTrue {
+		log.Debug("Test mode: skipping fork")
+		return nil
+	}
+
+	// 現在の実行ファイルパスを取得
+	execPath, err := os.Executable()
+	if err != nil {
+		log.Error("Failed to get executable path", "error", err)
+		return errors.WrapInternal(err, "failed to get executable path")
+	}
+
+	// 子プロセス用の引数を準備
+	args := os.Args[1:] // 元の引数を保持
+
+	// 子プロセスを起動
+	cmd := exec.Command(execPath, args...)
+	cmd.Env = append(os.Environ(), envBackgroundProcess+"="+envValueTrue)
+
+	// プロセス分離の属性を設定
+	cmd.SysProcAttr = d.getSysProcAttr()
+
+	// 標準入出力をnullデバイスにリダイレクト
+	if devNull, err := os.Open(os.DevNull); err == nil {
+		defer devNull.Close()
+		cmd.Stdin = devNull
+		cmd.Stdout = devNull
+		cmd.Stderr = devNull
+	}
+
+	// 子プロセスを起動
+	if err := cmd.Start(); err != nil {
+		log.Error("Failed to start background process", "error", err)
+		return errors.WrapInternal(err, "failed to start background process")
+	}
+
+	log.Info("Background process started", "pid", cmd.Process.Pid)
+
+	// 親プロセスを終了
+	os.Exit(0)
+	return nil
+}
+
+// getSysProcAttr returns system-specific process attributes for daemon
+// This method will have OS-specific implementations
+func (d *daemonService) getSysProcAttr() *syscall.SysProcAttr {
+	return getSysProcAttr()
 }
 
 // IsRunning checks if daemon is currently running
