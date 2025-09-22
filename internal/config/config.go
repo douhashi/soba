@@ -113,21 +113,10 @@ func expandEnvVarsWithConfig(content string, cfg *Config) string {
 }
 
 // shouldWarnForEnvVar determines if a warning should be shown for a missing environment variable
+// This function uses the EnvVarClassifier to categorize variables and apply appropriate warning logic
 func shouldWarnForEnvVar(key string, cfg *Config) bool {
-	switch key {
-	case "GITHUB_TOKEN":
-		// Warn only when auth_method is "env"
-		return cfg.GitHub.AuthMethod == "env"
-	case "SLACK_WEBHOOK_URL":
-		// Warn only when notifications_enabled is true
-		return cfg.Slack.NotificationsEnabled
-	case "PID":
-		// PID is a special variable replaced at daemon startup, not during config load
-		return false
-	default:
-		// For other environment variables, always warn (preserve existing behavior)
-		return true
-	}
+	classifier := NewEnvVarClassifier()
+	return classifier.ShouldWarn(key, cfg)
 }
 
 func (c *Config) setDefaults() {
