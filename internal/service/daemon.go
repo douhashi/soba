@@ -164,6 +164,7 @@ func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
 	if err := logger.InitWithFile(logger.Config{
 		Environment: "production",
 		Level:       logger.ParseLevel(os.Getenv("LOG_LEVEL")),
+		Output:      os.Stdout,
 		FilePath:    logPath,
 	}); err != nil {
 		log.Error("Failed to initialize log file", "error", err, "path", logPath)
@@ -185,13 +186,14 @@ func (d *daemonService) initializeLogging(cfg *config.Config) (string, error) {
 
 // StartForeground starts Issue monitoring in foreground mode
 func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config) error {
-	log := logger.NewLogger(logger.GetLogger())
-
 	// ログ出力を初期化（foregroundモードでもログファイルへ出力）
 	logPath, err := d.initializeLogging(cfg)
 	if err != nil {
 		return err
 	}
+
+	// ログ初期化後に新しいロガーインスタンスを作成（ファイル出力設定を含む）
+	log := logger.NewLogger(logger.GetLogger())
 
 	if logPath != "" {
 		log.Info("Starting Issue monitoring in foreground mode", "logFile", logPath)
@@ -293,8 +295,6 @@ const envValueTrue = "true"
 
 // StartDaemon starts Issue monitoring in daemon mode
 func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) error {
-	log := logger.NewLogger(logger.GetLogger())
-
 	// 既に実行中かチェック
 	if d.IsRunning() {
 		return errors.NewConflictError("daemon is already running")
@@ -312,6 +312,9 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 	if err != nil {
 		return err
 	}
+
+	// ログ初期化後に新しいロガーインスタンスを作成（ファイル出力設定を含む）
+	log := logger.NewLogger(logger.GetLogger())
 
 	// tmuxセッションを初期化
 	if err := d.initializeTmuxSession(cfg); err != nil {
