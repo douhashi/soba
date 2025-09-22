@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 type mockSlackClient struct {
@@ -94,7 +95,8 @@ func TestNotifier_NotifyPhaseStart(t *testing.T) {
 				NotificationsEnabled: tt.enabled,
 			}
 
-			notifier := NewSyncNotifier(mockClient, config)
+			logger := logging.NewMockLogger()
+			notifier := NewSyncNotifier(mockClient, config, logger)
 			err := notifier.NotifyPhaseStart(tt.phase, tt.issueNumber)
 
 			if tt.wantError && err == nil {
@@ -168,7 +170,8 @@ func TestNotifier_NotifyPRMerged(t *testing.T) {
 				NotificationsEnabled: tt.enabled,
 			}
 
-			notifier := NewSyncNotifier(mockClient, config)
+			logger := logging.NewMockLogger()
+			notifier := NewSyncNotifier(mockClient, config, logger)
 			err := notifier.NotifyPRMerged(tt.prNumber, tt.issueNumber)
 
 			if tt.wantError && err == nil {
@@ -201,7 +204,8 @@ func TestNotifier_AsyncNotify(t *testing.T) {
 		NotificationsEnabled: true,
 	}
 
-	notifier := NewNotifier(mockClient, config)
+	logger := logging.NewMockLogger()
+	notifier := NewNotifier(mockClient, config, logger)
 
 	// 非同期通知をテスト
 	wg.Add(1) // 1つのメッセージを待機
@@ -228,7 +232,8 @@ func TestNewNotifier(t *testing.T) {
 		NotificationsEnabled: true,
 	}
 
-	notifier := NewNotifier(mockClient, config)
+	logger := logging.NewMockLogger()
+	notifier := NewNotifier(mockClient, config, logger)
 
 	if notifier == nil {
 		t.Error("Expected notifier to be created, got nil")

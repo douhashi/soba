@@ -1,10 +1,11 @@
 package slack
 
 import (
+	"context"
 	"fmt"
-	"log"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 type SlackClient interface {
@@ -14,21 +15,24 @@ type SlackClient interface {
 type Notifier struct {
 	client SlackClient
 	config *config.SlackConfig
+	logger logging.Logger
 	async  bool // テスト用
 }
 
-func NewNotifier(client SlackClient, config *config.SlackConfig) *Notifier {
+func NewNotifier(client SlackClient, config *config.SlackConfig, logger logging.Logger) *Notifier {
 	return &Notifier{
 		client: client,
 		config: config,
+		logger: logger,
 		async:  true, // デフォルトは非同期
 	}
 }
 
-func NewSyncNotifier(client SlackClient, config *config.SlackConfig) *Notifier {
+func NewSyncNotifier(client SlackClient, config *config.SlackConfig, logger logging.Logger) *Notifier {
 	return &Notifier{
 		client: client,
 		config: config,
+		logger: logger,
 		async:  false, // テスト用同期版
 	}
 }
@@ -64,14 +68,28 @@ func (n *Notifier) sendAsync(message string) error {
 	if n.async {
 		go func() {
 			if err := n.client.SendMessage(message); err != nil {
-				log.Printf("Failed to send Slack notification: %v", err)
+				n.logger.Warn(context.Background(), "Failed to send Slack notification",
+					logging.Field{Key: "error", Value: err.Error()},
+					logging.Field{Key: "message", Value: message},
+				)
+			} else {
+				n.logger.Debug(context.Background(), "Slack notification sent successfully",
+					logging.Field{Key: "message", Value: message},
+				)
 			}
 		}()
 		return nil
 	} else {
 		// 同期実行（テスト用）
 		if err := n.client.SendMessage(message); err != nil {
-			log.Printf("Failed to send Slack notification: %v", err)
+			n.logger.Warn(context.Background(), "Failed to send Slack notification",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "message", Value: message},
+			)
+		} else {
+			n.logger.Debug(context.Background(), "Slack notification sent successfully",
+				logging.Field{Key: "message", Value: message},
+			)
 		}
 		return nil
 	}
