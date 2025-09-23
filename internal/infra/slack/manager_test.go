@@ -3,9 +3,10 @@ package slack
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/pkg/logging"
-	"github.com/stretchr/testify/assert"
 )
 
 // MockSlackClient for testing
