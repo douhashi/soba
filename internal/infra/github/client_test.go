@@ -10,10 +10,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestClient(t *testing.T) {
 	ctx := context.Background()
+	mockLogger := logging.NewMockLogger()
 
 	t.Run("NewClient", func(t *testing.T) {
 		t.Run("creates client with token provider", func(t *testing.T) {
@@ -21,7 +24,9 @@ func TestClient(t *testing.T) {
 				token: "test-token",
 			}
 
-			client, err := NewClient(tokenProvider, nil)
+			client, err := NewClient(tokenProvider, &ClientOptions{
+				Logger: mockLogger,
+			})
 			require.NoError(t, err)
 			assert.NotNil(t, client)
 			assert.Equal(t, tokenProvider, client.tokenProvider)
@@ -36,6 +41,7 @@ func TestClient(t *testing.T) {
 			opts := &ClientOptions{
 				BaseURL: "https://github.enterprise.com/api/v3",
 				Timeout: 30 * time.Second,
+				Logger:  mockLogger,
 			}
 
 			client, err := NewClient(tokenProvider, opts)
@@ -79,6 +85,7 @@ func TestClient(t *testing.T) {
 
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -107,6 +114,7 @@ func TestClient(t *testing.T) {
 
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -126,7 +134,9 @@ func TestClient(t *testing.T) {
 				err:   assert.AnError,
 			}
 
-			client, err := NewClient(tokenProvider, nil)
+			client, err := NewClient(tokenProvider, &ClientOptions{
+				Logger: mockLogger,
+			})
 			require.NoError(t, err)
 
 			req, err := http.NewRequestWithContext(ctx, "GET", defaultBaseURL+"/repos/test/repo/issues", nil)
@@ -155,6 +165,7 @@ func TestClient(t *testing.T) {
 
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -189,6 +200,7 @@ func TestClient(t *testing.T) {
 
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 

@@ -61,6 +61,7 @@ type LogConfig struct {
 	OutputPath     string `yaml:"output_path"`
 	RetentionCount int    `yaml:"retention_count"`
 	Level          string `yaml:"level"`
+	Format         string `yaml:"format"` // "json" or "text"
 }
 
 func Load(path string) (*Config, error) {
@@ -141,5 +142,8 @@ func (c *Config) setDefaults() {
 	}
 	if c.Log.RetentionCount == 0 {
 		c.Log.RetentionCount = 10
+	}
+	if c.Log.Format == "" {
+		c.Log.Format = "text" // Default to text format
 	}
 }

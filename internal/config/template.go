@@ -70,6 +70,8 @@ log:
   retention_count: 10
   # Log level: debug, info, warn, error (default: warn)
   level: warn
+  # Log format: "text" or "json" (default: text)
+  format: text
 
 # Phase commands (optional - for custom Claude commands)
 phase:

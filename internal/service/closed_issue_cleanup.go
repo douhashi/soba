@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/douhashi/soba/internal/infra/github"
 	"github.com/douhashi/soba/internal/infra/tmux"
+	"github.com/douhashi/soba/pkg/app"
 	"github.com/douhashi/soba/pkg/logging"
 )
 
@@ -21,7 +20,7 @@ type ClosedIssueCleanupService struct {
 	sessionName  string
 	enabled      bool
 	interval     time.Duration
-	log          *zap.SugaredLogger
+	log          logging.Logger
 }
 
 // NewClosedIssueCleanupService は新しいClosedIssueCleanupServiceを作成する
@@ -32,6 +31,12 @@ func NewClosedIssueCleanupService(
 	enabled bool,
 	interval time.Duration,
 ) *ClosedIssueCleanupService {
+	var logger logging.Logger
+	// appが初期化されている場合のみロガーを取得
+	if app.IsInitialized() {
+		logger = app.LogFactory().CreateComponentLogger("cleanup")
+	}
+
 	return &ClosedIssueCleanupService{
 		githubClient: githubClient,
 		tmuxClient:   tmuxClient,
@@ -40,19 +45,14 @@ func NewClosedIssueCleanupService(
 		sessionName:  sessionName,
 		enabled:      enabled,
 		interval:     interval,
-		log:          zap.NewNop().Sugar(),
+		log:          logger,
 	}
 }
 
 // SetLogger はロガーを設定する
 func (s *ClosedIssueCleanupService) SetLogger(logger logging.Logger) {
-	// logging.Loggerインターフェースから内部的な*zap.SugaredLoggerに変換
 	if logger != nil {
-		// ロガーがnilでない場合、実際のzap.SugaredLoggerを設定
-		// これによりテストでロガーが設定されていることを確認できる
-		// TODO: 将来的にはlogging.Loggerインターフェースを直接使うように全体をリファクタリング
-		zapLogger, _ := zap.NewProduction()
-		s.log = zapLogger.Sugar()
+		s.log = logger
 	}
 }
 
@@ -69,16 +69,16 @@ func (s *ClosedIssueCleanupService) Configure(owner, repo, sessionName string, e
 func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 	if !s.enabled {
 		if s.log != nil {
-			s.log.Info("Closed issue cleanup service is disabled")
+			s.log.Info(ctx, "Closed issue cleanup service is disabled")
 		}
 		return nil
 	}
 
 	if s.log != nil {
-		s.log.Info("Starting closed issue cleanup service",
-			"owner", s.owner,
-			"repo", s.repo,
-			"interval", s.interval)
+		s.log.Info(ctx, "Starting closed issue cleanup service",
+			logging.Field{Key: "owner", Value: s.owner},
+			logging.Field{Key: "repo", Value: s.repo},
+			logging.Field{Key: "interval", Value: s.interval})
 	}
 
 	ticker := time.NewTicker(s.interval)
@@ -87,7 +87,7 @@ func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 	// 最初の実行
 	if err := s.cleanupOnce(ctx); err != nil {
 		if s.log != nil {
-			s.log.Errorw("Failed to cleanup closed issues", "error", err)
+			s.log.Error(ctx, "Failed to cleanup closed issues", logging.Field{Key: "error", Value: err})
 		}
 	}
 
@@ -95,13 +95,13 @@ func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			if s.log != nil {
-				s.log.Info("Stopping closed issue cleanup service")
+				s.log.Info(ctx, "Stopping closed issue cleanup service")
 			}
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.cleanupOnce(ctx); err != nil {
 				if s.log != nil {
-					s.log.Errorw("Failed to cleanup closed issues", "error", err)
+					s.log.Error(ctx, "Failed to cleanup closed issues", logging.Field{Key: "error", Value: err})
 				}
 				// エラーがあっても継続
 			}
@@ -112,7 +112,7 @@ func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 // cleanupOnce は1回のクリーンアップ処理を実行する
 func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 	if s.log != nil {
-		s.log.Debug("Starting cleanup of closed issues")
+		s.log.Debug(ctx, "Starting cleanup of closed issues")
 	}
 
 	// githubClientがnilの場合は何もしない
@@ -128,13 +128,13 @@ func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 	issues, err := s.githubClient.ListIssues(ctx, s.owner, s.repo, opts)
 	if err != nil {
 		if s.log != nil {
-			s.log.Errorw("Failed to list closed issues", "error", err)
+			s.log.Error(ctx, "Failed to list closed issues", logging.Field{Key: "error", Value: err})
 		}
 		return fmt.Errorf("failed to list closed issues: %w", err)
 	}
 
 	if s.log != nil {
-		s.log.Debugw("Found closed issues", "count", len(issues))
+		s.log.Debug(ctx, "Found closed issues", logging.Field{Key: "count", Value: len(issues)})
 	}
 
 	// tmuxClientがnilの場合も何もしない
@@ -150,19 +150,19 @@ func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 		exists, err := s.tmuxClient.WindowExists(s.sessionName, windowName)
 		if err != nil {
 			if s.log != nil {
-				s.log.Errorw("Failed to check window existence",
-					"session", s.sessionName,
-					"window", windowName,
-					"error", err)
+				s.log.Error(ctx, "Failed to check window existence",
+					logging.Field{Key: "session", Value: s.sessionName},
+					logging.Field{Key: "window", Value: windowName},
+					logging.Field{Key: "error", Value: err})
 			}
 			continue
 		}
 
 		if !exists {
 			if s.log != nil {
-				s.log.Debugw("Window does not exist",
-					"session", s.sessionName,
-					"window", windowName)
+				s.log.Debug(ctx, "Window does not exist",
+					logging.Field{Key: "session", Value: s.sessionName},
+					logging.Field{Key: "window", Value: windowName})
 			}
 			continue
 		}
@@ -170,18 +170,18 @@ func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 		// ウィンドウを削除
 		if err := s.tmuxClient.DeleteWindow(s.sessionName, windowName); err != nil {
 			if s.log != nil {
-				s.log.Errorw("Failed to delete tmux window",
-					"window", windowName,
-					"issue", issue.Number,
-					"error", err)
+				s.log.Error(ctx, "Failed to delete tmux window",
+					logging.Field{Key: "window", Value: windowName},
+					logging.Field{Key: "issue", Value: issue.Number},
+					logging.Field{Key: "error", Value: err})
 			}
 			continue
 		}
 
 		if s.log != nil {
-			s.log.Infow("Deleted tmux window for closed issue",
-				"window", windowName,
-				"issue", issue.Number)
+			s.log.Info(ctx, "Deleted tmux window for closed issue",
+				logging.Field{Key: "window", Value: windowName},
+				logging.Field{Key: "issue", Value: issue.Number})
 		}
 	}
 

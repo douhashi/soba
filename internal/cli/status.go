@@ -9,7 +9,7 @@ import (
 
 	"github.com/douhashi/soba/internal/service"
 	"github.com/douhashi/soba/internal/service/builder"
-	"github.com/douhashi/soba/pkg/logging"
+	"github.com/douhashi/soba/pkg/app"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -27,11 +27,11 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	log := logging.NewMockLogger()
+	log := app.LogFactory().CreateComponentLogger("cli")
 	log.Debug(context.Background(), "Running status command")
 
 	// Get the global log factory
-	logFactory := GetLogFactory()
+	logFactory := app.LogFactory()
 
 	// Create service builder
 	sb := builder.NewServiceBuilder(logFactory)

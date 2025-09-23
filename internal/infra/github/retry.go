@@ -37,8 +37,8 @@ type RetryableClient struct {
 
 // NewRetryableClient は新しいRetryableClientを作成する
 func NewRetryableClient(opts *RetryOptions) *RetryableClient {
-	if opts == nil {
-		opts = defaultRetryOptions
+	if opts == nil || opts.Logger == nil {
+		panic("RetryOptions with Logger is required")
 	}
 
 	if opts.Multiplier == 0 {
@@ -51,16 +51,9 @@ func NewRetryableClient(opts *RetryOptions) *RetryableClient {
 		opts.MaxWait = 30 * time.Second
 	}
 
-	l := opts.Logger
-	if l == nil {
-		// デフォルトロガーの作成
-		factory, _ := logging.NewFactory(logging.Config{})
-		l = factory.CreateComponentLogger("github-retry")
-	}
-
 	return &RetryableClient{
 		options: opts,
-		logger:  l,
+		logger:  opts.Logger,
 	}
 }
 

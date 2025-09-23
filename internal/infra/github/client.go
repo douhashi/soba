@@ -27,9 +27,9 @@ type ClientImpl struct {
 
 // ClientOptions はクライアントのオプション
 type ClientOptions struct {
-	BaseURL string        // GitHub Enterprise用のカスタムURL
-	Timeout time.Duration // HTTPクライアントのタイムアウト
-	Logger  logging.Logger // ロガー
+	BaseURL string         // GitHub Enterprise用のカスタムURL
+	Timeout time.Duration  // HTTPクライアントのタイムアウト
+	Logger  logging.Logger // ロガー (必須)
 }
 
 // NewClient は新しいGitHub APIクライアントを作成する
@@ -38,8 +38,8 @@ func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*ClientImpl, e
 		return nil, infra.NewGitHubAPIError(0, "", "token provider is required")
 	}
 
-	if opts == nil {
-		opts = &ClientOptions{}
+	if opts == nil || opts.Logger == nil {
+		return nil, infra.NewGitHubAPIError(0, "", "logger is required")
 	}
 
 	baseURL := opts.BaseURL
@@ -52,20 +52,13 @@ func NewClient(tokenProvider TokenProvider, opts *ClientOptions) (*ClientImpl, e
 		timeout = defaultTimeout
 	}
 
-	l := opts.Logger
-	if l == nil {
-		// デフォルトロガーの作成
-		factory, _ := logging.NewFactory(logging.Config{})
-		l = factory.CreateComponentLogger("github-client")
-	}
-
 	return &ClientImpl{
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
 		tokenProvider: tokenProvider,
 		baseURL:       baseURL,
-		logger:        l,
+		logger:        opts.Logger,
 	}, nil
 }
 

@@ -11,10 +11,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestIssue(t *testing.T) {
 	ctx := context.Background()
+	mockLogger := logging.NewMockLogger()
 
 	t.Run("ListOpenIssues", func(t *testing.T) {
 		t.Run("returns list of open issues", func(t *testing.T) {
@@ -50,6 +53,7 @@ func TestIssue(t *testing.T) {
 			tokenProvider := &mockTokenProvider{token: "test-token"}
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -80,6 +84,7 @@ func TestIssue(t *testing.T) {
 			tokenProvider := &mockTokenProvider{token: "test-token"}
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -106,6 +111,7 @@ func TestIssue(t *testing.T) {
 			tokenProvider := &mockTokenProvider{token: "test-token"}
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -127,6 +133,7 @@ func TestIssue(t *testing.T) {
 			tokenProvider := &mockTokenProvider{token: "test-token"}
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  mockLogger,
 			})
 			require.NoError(t, err)
 
@@ -138,7 +145,9 @@ func TestIssue(t *testing.T) {
 
 		t.Run("validates required parameters", func(t *testing.T) {
 			tokenProvider := &mockTokenProvider{token: "test-token"}
-			client, err := NewClient(tokenProvider, nil)
+			client, err := NewClient(tokenProvider, &ClientOptions{
+				Logger: mockLogger,
+			})
 			require.NoError(t, err)
 
 			// オーナーが空の場合
@@ -175,7 +184,9 @@ func TestIssue(t *testing.T) {
 	})
 
 	t.Run("buildIssuesURL", func(t *testing.T) {
-		client, err := NewClient(&mockTokenProvider{token: "test"}, nil)
+		client, err := NewClient(&mockTokenProvider{token: "test"}, &ClientOptions{
+			Logger: mockLogger,
+		})
 		require.NoError(t, err)
 
 		t.Run("builds basic URL", func(t *testing.T) {

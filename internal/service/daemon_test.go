@@ -13,11 +13,17 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/pkg/app"
 	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestNewDaemonService(t *testing.T) {
-	service := NewDaemonService(nil)
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTest()
+
+	// Create service with global LogFactory
+	service := NewDaemonService(app.LogFactory())
 	assert.NotNil(t, service)
 }
 
@@ -553,7 +559,7 @@ func TestDaemonService_InitializeLogging(t *testing.T) {
 				logger:  mockLogger,
 			}
 
-			logPath, err := service.initializeLogging(tt.cfg, false)
+			logPath, err := service.prepareLogPath(tt.cfg)
 
 			if tt.wantError {
 				assert.Error(t, err)

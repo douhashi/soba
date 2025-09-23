@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra"
 )
 
 func TestExecute(t *testing.T) {
@@ -180,7 +178,6 @@ func TestLogLevelFlag(t *testing.T) {
 			rootCmd = newRootCmd()
 			logLevel = ""
 			verbose = false
-			cobra.OnInitialize(initConfig)
 			rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file path")
 			rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 			rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "set log level (debug, info, warn, error)")
@@ -233,7 +230,6 @@ func TestLogLevelPriority(t *testing.T) {
 			rootCmd = newRootCmd()
 			logLevel = ""
 			verbose = false
-			cobra.OnInitialize(initConfig)
 			rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file path")
 			rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 			rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "", "set log level (debug, info, warn, error)")

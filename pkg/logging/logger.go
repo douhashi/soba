@@ -85,6 +85,11 @@ func (l *contextLogger) log(ctx context.Context, level slog.Level, msg string, f
 		ctx = context.Background()
 	}
 
+	// Check if this level is enabled before processing
+	if !l.handler.Enabled(ctx, level) {
+		return
+	}
+
 	// Extract context values
 	attrs := l.extractContextAttributes(ctx)
 

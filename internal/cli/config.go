@@ -2,14 +2,12 @@
 package cli
 
 import (
-	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/douhashi/soba/internal/config"
-	"github.com/douhashi/soba/pkg/logging"
+	"github.com/douhashi/soba/pkg/app"
 )
 
 // newConfigCmd creates a new config command
@@ -32,22 +30,9 @@ Sensitive information like tokens and webhook URLs will be masked.`,
 }
 
 // runConfig executes the config command
-func runConfig(cmd *cobra.Command, configPath string) error {
-	log := logging.NewMockLogger()
-
-	// 設定ファイルパスを決定
-	if configPath == "" {
-		configPath = filepath.Join(".soba", "config.yml")
-	}
-
-	log.Debug(context.Background(), "Loading config file", logging.Field{Key: "path", Value: configPath})
-
-	// 設定ファイルを読み込み
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		cmd.PrintErrf("Error: Failed to load config file: %v\n", err)
-		return err
-	}
+func runConfig(cmd *cobra.Command, _ string) error {
+	// Get config from global app
+	cfg := app.Config()
 
 	// 設定内容を表示用に整形
 	output, err := config.DisplayConfig(cfg)

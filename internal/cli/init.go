@@ -21,7 +21,11 @@ func newInitCmd() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize soba configuration",
 		Long:  `Initialize soba configuration by creating a .soba/config.yml file in the current directory`,
-		RunE:  runInit,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			// Skip parent's PersistentPreRunE
+			return nil
+		},
+		RunE: runInit,
 	}
 
 	return cmd

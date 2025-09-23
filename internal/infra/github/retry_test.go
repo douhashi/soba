@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestRetry(t *testing.T) {
@@ -24,7 +26,9 @@ func TestRetry(t *testing.T) {
 				}, nil
 			}
 
-			retrier := NewRetryableClient(nil)
+			retrier := NewRetryableClient(&RetryOptions{
+				Logger: logging.NewMockLogger(),
+			})
 			resp, err := retrier.DoWithRetry(ctx, handler)
 			require.NoError(t, err)
 			assert.NotNil(t, resp)
@@ -50,6 +54,7 @@ func TestRetry(t *testing.T) {
 				MaxRetries:  3,
 				InitialWait: 10 * time.Millisecond,
 				MaxWait:     100 * time.Millisecond,
+				Logger:      logging.NewMockLogger(),
 			}
 			retrier := NewRetryableClient(opts)
 			resp, err := retrier.DoWithRetry(ctx, handler)
@@ -76,6 +81,7 @@ func TestRetry(t *testing.T) {
 			opts := &RetryOptions{
 				MaxRetries:  3,
 				InitialWait: 10 * time.Millisecond,
+				Logger:      logging.NewMockLogger(),
 			}
 			retrier := NewRetryableClient(opts)
 			resp, err := retrier.DoWithRetry(ctx, handler)
@@ -100,6 +106,7 @@ func TestRetry(t *testing.T) {
 			opts := &RetryOptions{
 				MaxRetries:  3,
 				InitialWait: 10 * time.Millisecond,
+				Logger:      logging.NewMockLogger(),
 			}
 			retrier := NewRetryableClient(opts)
 			resp, err := retrier.DoWithRetry(ctx, handler)
@@ -120,6 +127,7 @@ func TestRetry(t *testing.T) {
 			opts := &RetryOptions{
 				MaxRetries:  2,
 				InitialWait: 10 * time.Millisecond,
+				Logger:      logging.NewMockLogger(),
 			}
 			retrier := NewRetryableClient(opts)
 			resp, err := retrier.DoWithRetry(ctx, handler)
@@ -138,7 +146,9 @@ func TestRetry(t *testing.T) {
 				}, nil
 			}
 
-			retrier := NewRetryableClient(nil)
+			retrier := NewRetryableClient(&RetryOptions{
+				Logger: logging.NewMockLogger(),
+			})
 			resp, err := retrier.DoWithRetry(ctx, handler)
 			require.NoError(t, err)
 			assert.NotNil(t, resp)
@@ -158,7 +168,9 @@ func TestRetry(t *testing.T) {
 				}, nil
 			}
 
-			retrier := NewRetryableClient(nil)
+			retrier := NewRetryableClient(&RetryOptions{
+				Logger: logging.NewMockLogger(),
+			})
 			resp, err := retrier.DoWithRetry(cancelCtx, handler)
 			assert.Error(t, err)
 			assert.Nil(t, resp)
@@ -203,6 +215,7 @@ func TestRetry(t *testing.T) {
 			InitialWait: 100 * time.Millisecond,
 			MaxWait:     2 * time.Second,
 			Multiplier:  2,
+			Logger:      logging.NewMockLogger(),
 		}
 
 		t.Run("exponential backoff", func(t *testing.T) {
