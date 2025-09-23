@@ -83,6 +83,7 @@ type PhaseStartData struct {
 	Phase       string
 	IssueNumber int
 	IssueURL    string
+	Repository  string
 }
 
 type PRMergedData struct {
@@ -136,6 +137,7 @@ func (s *SlackManager) NotifyPhaseStart(phase string, issueNumber int) {
 		Phase:       phase,
 		IssueNumber: issueNumber,
 		IssueURL:    s.buildIssueURL(issueNumber),
+		Repository:  s.githubConfig.Repository,
 	}
 	s.sendBlockMessage("phase_start", data)
 }

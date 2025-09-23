@@ -12,7 +12,7 @@
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "*{{.Phase}}* phase started for *douhashi/soba* *#{{.IssueNumber}}*"
+                "text": "*{{.Phase}}* phase started for *{{.Repository}}* *#{{.IssueNumber}}*"
             },
             "accessory": {
                 "type": "button",
