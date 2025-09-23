@@ -15,11 +15,10 @@ import (
 
 // PRWatcher はPR監視機能を提供する
 type PRWatcher struct {
-	client        GitHubClientInterface
-	config        *config.Config
-	interval      time.Duration
-	slackNotifier *slack.Notifier
-	logger        logging.Logger
+	client   GitHubClientInterface
+	config   *config.Config
+	interval time.Duration
+	logger   logging.Logger
 }
 
 // NewPRWatcher は新しいPRWatcherを作成する
@@ -37,25 +36,6 @@ func NewPRWatcher(client GitHubClientInterface, cfg *config.Config) *PRWatcher {
 		config:   cfg,
 		interval: time.Duration(cfg.Workflow.Interval) * time.Second,
 		logger:   log,
-	}
-}
-
-// NewPRWatcherWithSlack はSlack通知付きで新しいPRWatcherを作成する
-func NewPRWatcherWithSlack(client GitHubClientInterface, cfg *config.Config, slackNotifier *slack.Notifier) *PRWatcher {
-	// デフォルト値の設定
-	if cfg.Workflow.Interval == 0 {
-		cfg.Workflow.Interval = 20
-	}
-
-	// ロガーの初期化（テスト環境を考慮）
-	log := logging.NewMockLogger() // デフォルトでMockLogger使用
-
-	return &PRWatcher{
-		client:        client,
-		config:        cfg,
-		interval:      time.Duration(cfg.Workflow.Interval) * time.Second,
-		slackNotifier: slackNotifier,
-		logger:        log,
 	}
 }
 
@@ -231,17 +211,9 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 		)
 
 		// Slack通知: PRマージ完了
-		if w.slackNotifier != nil {
-			// PR番号からIssue番号を抽出 (ファイル名パターンから推測)
-			issueNumber := w.extractIssueNumber(pr.Title)
-			if err := w.slackNotifier.NotifyPRMerged(pr.Number, issueNumber); err != nil {
-				w.logger.Error(ctx, "Failed to send Slack notification",
-					logging.Field{Key: "error", Value: err.Error()},
-					logging.Field{Key: "pr", Value: pr.Number},
-					logging.Field{Key: "issue", Value: issueNumber},
-				)
-			}
-		}
+		// PR番号からIssue番号を抽出 (ファイル名パターンから推測)
+		issueNumber := w.extractIssueNumber(pr.Title)
+		slack.NotifyPRMerged(pr.Number, issueNumber)
 	} else {
 		w.logger.Warn(ctx, "PR merge was not successful",
 			logging.Field{Key: "number", Value: pr.Number},

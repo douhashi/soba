@@ -32,7 +32,6 @@ type workflowExecutor struct {
 	tmux           tmux.TmuxClient
 	workspace      GitWorkspaceManager
 	issueProcessor IssueProcessorUpdater
-	slackNotifier  *slack.Notifier
 	logger         logging.Logger
 	maxPanes       int
 }
@@ -54,18 +53,6 @@ func NewWorkflowExecutor(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManag
 	}
 }
 
-// NewWorkflowExecutorWithSlack はSlack通知付きで新しいWorkflowExecutorを作成する
-func NewWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, slackNotifier *slack.Notifier, logger logging.Logger) WorkflowExecutor {
-	return &workflowExecutor{
-		tmux:           tmuxClient,
-		workspace:      workspace,
-		issueProcessor: processor,
-		slackNotifier:  slackNotifier,
-		logger:         logger,
-		maxPanes:       DefaultMaxPanes,
-	}
-}
-
 // ExecutePhase は指定されたフェーズを実行する
 func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config, issueNumber int, phase domain.Phase) error {
 	e.logger.Info(ctx, "Executing phase",
@@ -74,15 +61,7 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 	)
 
 	// Slack通知: フェーズ開始
-	if e.slackNotifier != nil {
-		if err := e.slackNotifier.NotifyPhaseStart(string(phase), issueNumber); err != nil {
-			e.logger.Error(ctx, "Failed to send Slack notification",
-				logging.Field{Key: "error", Value: err.Error()},
-				logging.Field{Key: "phase", Value: string(phase)},
-				logging.Field{Key: "issue", Value: issueNumber},
-			)
-		}
-	}
+	slack.NotifyPhaseStart(string(phase), issueNumber)
 
 	// IssueProcessorに設定を適用
 	if e.issueProcessor != nil {
@@ -115,18 +94,11 @@ func (e *workflowExecutor) ExecutePhase(ctx context.Context, cfg *config.Config,
 			)
 
 			// Slack通知: ラベル更新エラー
-			if e.slackNotifier != nil {
-				notifyErr := e.slackNotifier.NotifyError(
-					fmt.Sprintf("Failed to update labels for issue #%d: %s → %s",
-						issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel),
-					err.Error(),
-				)
-				if notifyErr != nil {
-					e.logger.Error(ctx, "Failed to send error notification to Slack",
-						logging.Field{Key: "error", Value: notifyErr.Error()},
-					)
-				}
-			}
+			slack.NotifyError(
+				fmt.Sprintf("Failed to update labels for issue #%d: %s → %s",
+					issueNumber, phaseDef.TriggerLabel, phaseDef.ExecutionLabel),
+				err.Error(),
+			)
 
 			return WrapServiceError(err, "failed to update labels")
 		}

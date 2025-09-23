@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/service"
 	"github.com/douhashi/soba/pkg/app"
 )
@@ -54,6 +55,10 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonServ
 
 	if daemon {
 		log.Info(ctx, "Starting Issue monitoring in daemon mode")
+
+		// Slack通知: デーモン開始
+		slack.NotifyPhaseStart("daemon-start", 0)
+
 		err := daemonService.StartDaemon(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Successfully started daemon mode\n")
@@ -61,6 +66,10 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonServ
 		return err
 	} else {
 		log.Info(ctx, "Starting Issue monitoring in foreground mode")
+
+		// Slack通知: フォアグラウンド開始
+		slack.NotifyPhaseStart("foreground-start", 0)
+
 		err := daemonService.StartForeground(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Issue monitoring stopped\n")

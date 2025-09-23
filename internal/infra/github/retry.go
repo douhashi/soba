@@ -14,10 +14,10 @@ import (
 
 // RetryOptions はリトライの設定
 type RetryOptions struct {
-	MaxRetries  int           // 最大リトライ回数
-	InitialWait time.Duration // 初回待機時間
-	MaxWait     time.Duration // 最大待機時間
-	Multiplier  float64       // 待機時間の倍率
+	MaxRetries  int            // 最大リトライ回数
+	InitialWait time.Duration  // 初回待機時間
+	MaxWait     time.Duration  // 最大待機時間
+	Multiplier  float64        // 待機時間の倍率
 	Logger      logging.Logger // ロガー
 }
 

@@ -2,7 +2,6 @@ package builder
 
 import (
 	"github.com/douhashi/soba/internal/infra/git"
-	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
 )
 
@@ -11,10 +10,10 @@ type Clients = ResolvedClients
 
 // ResolvedClients represents resolved client dependencies
 type ResolvedClients struct {
-	GitHubClient  GitHubClientInterface
-	GitClient     *git.Client
-	TmuxClient    tmux.TmuxClient
-	SlackNotifier *slack.Notifier
+	GitHubClient GitHubClientInterface
+	GitClient    *git.Client
+	TmuxClient   tmux.TmuxClient
+	// SlackNotifier removed - using singleton SlackManager instead
 }
 
 // ResolvedServices represents resolved service dependencies
@@ -30,6 +29,5 @@ type ResolvedServices struct {
 
 // DefaultServiceFactory interface
 type DefaultServiceFactory interface {
-	CreateWorkflowExecutorWithSlack(tmuxClient tmux.TmuxClient, workspace GitWorkspaceManager, processor IssueProcessorUpdater, slackNotifier interface{}) WorkflowExecutor
-	CreatePRWatcherWithSlack(githubClient GitHubClientInterface, cfg interface{}, slackNotifier interface{}) PRWatcher
+	// WithSlackメソッドは削除済み - 新しいSlackManagerシングルトンを使用
 }
