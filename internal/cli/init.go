@@ -97,15 +97,11 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	log.Debug(ctx, "Created directory", logging.Field{Key: "path", Value: sobaDir})
 
 	// Generate config template
-	var configContent string
-	if repository != "" {
-		opts := &config.TemplateOptions{
-			Repository: repository,
-		}
-		configContent = config.GenerateTemplateWithOptions(opts)
-	} else {
-		configContent = config.GenerateTemplate()
+	opts := &config.TemplateOptions{
+		Repository: repository,
+		LogLevel:   "info", // Set default log level to info as requested
 	}
+	configContent := config.GenerateTemplateWithOptions(opts)
 
 	// Write config file
 	if err := os.WriteFile(configPath, []byte(configContent), 0600); err != nil {
