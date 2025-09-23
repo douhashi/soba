@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,12 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 		log.Warn(ctx, "Failed to create GitHub labels", logging.Field{Key: "error", Value: err.Error()})
 	}
 
+	// Try to copy Claude command templates
+	if err := copyClaudeCommandTemplates(); err != nil {
+		// Log the error but don't fail the init command
+		log.Warn(ctx, "Failed to copy Claude command templates", logging.Field{Key: "error", Value: err.Error()})
+	}
+
 	return nil
 }
 
@@ -209,4 +216,84 @@ func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, clie
 	)
 
 	return nil
+}
+
+// copyClaudeCommandTemplates copies Claude command templates to .claude/commands/soba/
+func copyClaudeCommandTemplates() error {
+	// Get current working directory
+	currentDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	// Define source and target directories
+	sourceDir := filepath.Join(currentDir, "templates", "claude", "commands", "soba")
+	targetDir := filepath.Join(currentDir, ".claude", "commands", "soba")
+
+	// Check if source directory exists
+	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+		// Source directory doesn't exist, skip silently
+		return nil
+	}
+
+	// Create target directory if it doesn't exist
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return err
+	}
+
+	// Read source directory
+	entries, err := os.ReadDir(sourceDir)
+	if err != nil {
+		return err
+	}
+
+	// Copy each file
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		sourcePath := filepath.Join(sourceDir, entry.Name())
+		targetPath := filepath.Join(targetDir, entry.Name())
+
+		// Check if target file already exists
+		if _, err := os.Stat(targetPath); err == nil {
+			// File already exists, skip
+			continue
+		}
+
+		// Copy file
+		if err := copyFile(sourcePath, targetPath); err != nil {
+			// Log error but continue with other files
+			continue
+		}
+	}
+
+	return nil
+}
+
+// copyFile copies a file from source to destination
+func copyFile(src, dst string) error {
+	// Open source file
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	// Create destination file
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	// Copy content
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
+
+	// Sync to ensure data is written
+	return destFile.Sync()
 }
