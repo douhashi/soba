@@ -22,8 +22,32 @@ func TestNewDaemonService(t *testing.T) {
 	helper := app.NewTestHelper(t)
 	helper.InitializeForTest()
 
-	// Create service with global LogFactory
-	service := NewDaemonService(app.LogFactory())
+	// Test NewDaemonService without config (should use defaults and fail for repository requirement)
+	assert.Panics(t, func() {
+		NewDaemonService(app.LogFactory())
+	})
+}
+
+func TestNewDaemonServiceWithConfig(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTest()
+
+	// Test NewDaemonServiceWithConfig with valid config
+	cfg := &config.Config{
+		GitHub: config.GitHubConfig{
+			Repository: "douhashi/soba-cli",
+		},
+		Workflow: config.WorkflowConfig{
+			Interval: 20,
+		},
+		Git: config.GitConfig{
+			WorktreeBasePath: ".git/soba/worktrees",
+		},
+	}
+
+	// Create service with config and LogFactory
+	service := NewDaemonServiceWithConfig(cfg, app.LogFactory())
 	assert.NotNil(t, service)
 }
 
