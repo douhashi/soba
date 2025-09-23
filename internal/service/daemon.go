@@ -92,6 +92,30 @@ func NewDaemonServiceWithConfig(cfg *config.Config, logFactory *logging.Factory)
 	return service
 }
 
+// NewDaemonServiceForStop creates a minimal daemon service for stop command
+// This version doesn't require config and is used only for stopping the daemon
+func NewDaemonServiceForStop(logFactory *logging.Factory) DaemonService {
+	logger := logFactory.CreateComponentLogger("daemon")
+
+	// Get current working directory
+	workDir, err := os.Getwd()
+	if err != nil {
+		workDir = "."
+	}
+
+	// Create minimal daemon service with only the necessary dependencies
+	// tmux client is optional and will be initialized as nil
+	return &daemonService{
+		workDir:                   workDir,
+		processor:                 nil, // Not needed for stop
+		watcher:                   nil, // Not needed for stop
+		prWatcher:                 nil, // Not needed for stop
+		closedIssueCleanupService: nil, // Not needed for stop
+		tmux:                      nil, // Optional for stop
+		logger:                    logger,
+	}
+}
+
 // NewDaemonServiceWithDependencies creates daemon service with injected dependencies
 func NewDaemonServiceWithDependencies(
 	workDir string,

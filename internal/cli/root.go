@@ -45,7 +45,7 @@ development workflows through seamless integration with Claude Code AI.`,
 				cmdName = cmd.Name()
 			}
 
-			if cmdName == "init" || cmdName == "version" {
+			if cmdName == "init" || cmdName == "version" || cmdName == "stop" {
 				return nil
 			}
 
