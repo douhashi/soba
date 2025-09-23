@@ -49,15 +49,22 @@ Each phase is handled by Claude Code AI with full automation:
 
 ### Installation
 
+#### Quick Install (Recommended)
+
 ```bash
-# Clone the repository
+# Download and install the latest release
+curl -L https://github.com/douhashi/osoba/releases/latest/download/soba_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/arm64/').tar.gz | tar xz -C /tmp && sudo mv /tmp/soba /usr/local/bin/
+```
+
+#### Alternative Installation Methods
+
+```bash
+# Build from source
 git clone https://github.com/douhashi/soba.git
 cd soba
-
-# Build from source
 go build -o soba cmd/soba/main.go
 
-# Or install directly
+# Or install with Go
 go install github.com/douhashi/soba/cmd/soba@latest
 ```
 

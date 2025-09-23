@@ -49,15 +49,22 @@ GitHub Issue → AI企画 → 実装 → テスト → レビュー → マー�
 
 ### インストール
 
+#### クイックインストール（推奨）
+
 ```bash
-# リポジトリをクローン
+# 最新リリースをダウンロード・インストール
+curl -L https://github.com/douhashi/osoba/releases/latest/download/soba_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/arm64/').tar.gz | tar xz -C /tmp && sudo mv /tmp/soba /usr/local/bin/
+```
+
+#### その他のインストール方法
+
+```bash
+# ソースからビルド
 git clone https://github.com/douhashi/soba.git
 cd soba
-
-# ソースからビルド
 go build -o soba cmd/soba/main.go
 
-# または直接インストール
+# またはGoでインストール
 go install github.com/douhashi/soba/cmd/soba@latest
 ```
 
