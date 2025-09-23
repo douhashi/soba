@@ -58,6 +58,19 @@ func (m *MockIntegrationGitHubClient) MergePullRequest(ctx context.Context, owne
 	return nil, args.Error(1)
 }
 
+func (m *MockIntegrationGitHubClient) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, labels)
+	return args.Error(0)
+}
+
+func (m *MockIntegrationGitHubClient) GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]github.Label, error) {
+	args := m.Called(ctx, owner, repo, issueNumber)
+	if args.Get(0) != nil {
+		return args.Get(0).([]github.Label), args.Error(1)
+	}
+	return []github.Label{}, args.Error(1)
+}
+
 // MockIntegrationWorkflowExecutor は統合テスト用のモック
 type MockIntegrationWorkflowExecutor struct {
 	mock.Mock

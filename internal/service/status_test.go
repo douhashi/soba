@@ -130,6 +130,19 @@ func (m *StatusMockGitHubClient) MergePullRequest(ctx context.Context, owner, re
 	return nil, args.Error(1)
 }
 
+func (m *StatusMockGitHubClient) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, labels)
+	return args.Error(0)
+}
+
+func (m *StatusMockGitHubClient) GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]github.Label, error) {
+	args := m.Called(ctx, owner, repo, issueNumber)
+	if labels := args.Get(0); labels != nil {
+		return labels.([]github.Label), args.Error(1)
+	}
+	return []github.Label{}, args.Error(1)
+}
+
 func TestStatusService_GetStatus(t *testing.T) {
 	tests := []struct {
 		name           string

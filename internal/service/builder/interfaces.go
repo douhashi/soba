@@ -127,6 +127,8 @@ type GitHubClientInterface interface {
 	ListOpenIssues(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
 	AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error
 	RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error
+	UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error
+	GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]github.Label, error)
 	ListPullRequests(ctx context.Context, owner, repo string, opts *github.ListPullRequestsOptions) ([]github.PullRequest, bool, error)
 	GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, bool, error)
 	MergePullRequest(ctx context.Context, owner, repo string, number int, req *github.MergeRequest) (*github.MergeResponse, error)

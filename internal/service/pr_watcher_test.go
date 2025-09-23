@@ -70,6 +70,14 @@ func (m *MockGitHubClientForPR) RemoveLabelFromIssue(ctx context.Context, owner,
 	return nil
 }
 
+func (m *MockGitHubClientForPR) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
+	return nil
+}
+
+func (m *MockGitHubClientForPR) GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]github.Label, error) {
+	return []github.Label{}, nil
+}
+
 func TestNewPRWatcher(t *testing.T) {
 	t.Run("デフォルトの設定でPRWatcherを作成できる", func(t *testing.T) {
 		cfg := &config.Config{
