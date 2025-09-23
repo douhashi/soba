@@ -91,27 +91,27 @@ func TestGenerateSessionName(t *testing.T) {
 		expected   string
 	}{
 		{
-			name:       "正常なリポジトリ形式",
+			name:       "Normal repository format",
 			repository: "douhashi/soba",
 			expected:   "soba-douhashi-soba",
 		},
 		{
-			name:       "空のリポジトリ",
+			name:       "Empty repository",
 			repository: "",
 			expected:   "soba",
 		},
 		{
-			name:       "不正な形式（スラッシュなし）",
+			name:       "Invalid format (no slash)",
 			repository: "invalid-repo",
 			expected:   "soba",
 		},
 		{
-			name:       "不正な形式（スラッシュのみ）",
+			name:       "Invalid format (slash only)",
 			repository: "/",
 			expected:   "soba",
 		},
 		{
-			name:       "長いリポジトリ名",
+			name:       "Long repository name",
 			repository: "very-long-owner/very-long-repository-name",
 			expected:   "soba-very-long-owner-very-long-repository-name",
 		},
@@ -191,7 +191,7 @@ func TestRunOpen_CreateSessionError(t *testing.T) {
 	err := cmd.runOpen(nil, []string{})
 
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "セッションの作成に失敗しました")
+	assert.Contains(t, err.Error(), "Failed to create session")
 	mockTmux.AssertExpectations(t)
 }
 
@@ -221,6 +221,6 @@ func TestNewOpenCmd(t *testing.T) {
 	cmd := newOpenCmd()
 
 	assert.Equal(t, "open", cmd.Use)
-	assert.Equal(t, "tmuxセッションを開く", cmd.Short)
+	assert.Equal(t, "Open tmux session", cmd.Short)
 	assert.NotEmpty(t, cmd.Long)
 }
