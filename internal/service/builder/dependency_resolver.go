@@ -183,17 +183,22 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 		logging.Field{Key: "owner", Value: owner},
 		logging.Field{Key: "repo", Value: repo},
 	)
-	if owner != "" && repo != "" {
-		r.logger.Info(ctx, "Creating queue manager",
+	if owner == "" || repo == "" {
+		r.logger.Error(ctx, "Repository configuration is required but not provided",
+			logging.Field{Key: "repository", Value: r.config.GitHub.Repository},
 			logging.Field{Key: "owner", Value: owner},
 			logging.Field{Key: "repo", Value: repo},
 		)
-		queueManager := serviceFactory.CreateQueueManager(clients.GitHubClient, owner, repo)
-		services.IssueWatcher.SetQueueManager(queueManager)
-		r.logger.Info(ctx, "Queue manager set to IssueWatcher")
-	} else {
-		r.logger.Warn(ctx, "Skipping queue manager creation - owner or repo is empty")
+		return nil, fmt.Errorf("repository configuration is required: owner=%q repo=%q (repository=%q)", owner, repo, r.config.GitHub.Repository)
 	}
+
+	r.logger.Info(ctx, "Creating queue manager",
+		logging.Field{Key: "owner", Value: owner},
+		logging.Field{Key: "repo", Value: repo},
+	)
+	queueManager := serviceFactory.CreateQueueManager(clients.GitHubClient, owner, repo)
+	services.IssueWatcher.SetQueueManager(queueManager)
+	r.logger.Info(ctx, "Queue manager set to IssueWatcher")
 	services.IssueWatcher.SetProcessor(issueProcessor)
 	services.IssueWatcher.SetWorkflowExecutor(workflowExecutor)
 

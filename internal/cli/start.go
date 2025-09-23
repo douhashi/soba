@@ -30,9 +30,10 @@ Use -v/--verbose flag to enable debug logging.`,
 }
 
 func runStart(cmd *cobra.Command, args []string, daemon bool) error {
-	// Create service using global LogFactory
+	// Create service using global LogFactory and Config
 	// (app is already initialized with proper log level)
-	daemonService := service.NewDaemonService(app.LogFactory())
+	cfg := app.Config()
+	daemonService := service.NewDaemonServiceWithConfig(cfg, app.LogFactory())
 	return runStartWithService(cmd, args, daemon, daemonService)
 }
 

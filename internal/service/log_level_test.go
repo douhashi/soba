@@ -144,8 +144,9 @@ log:
 				Verbose:  tt.verbose,
 			})
 
-			// Create daemon service with global LogFactory
-			daemonService := NewDaemonService(app.LogFactory())
+			// Create daemon service with config and global LogFactory
+			cfg := app.Config()
+			daemonService := NewDaemonServiceWithConfig(cfg, app.LogFactory())
 
 			// The log level should be propagated correctly
 			assert.NotNil(t, daemonService)

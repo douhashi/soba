@@ -71,6 +71,27 @@ func NewDaemonService(logFactory *logging.Factory) DaemonService {
 	return service
 }
 
+// NewDaemonServiceWithConfig creates a new daemon service with specific config
+func NewDaemonServiceWithConfig(cfg *config.Config, logFactory *logging.Factory) DaemonService {
+	logger := logFactory.CreateComponentLogger("daemon")
+	ctx := context.Background()
+	logger.Info(ctx, "NewDaemonService called")
+
+	serviceBuilder := builder.NewServiceBuilder(logFactory).WithConfig(cfg)
+	logger.Info(ctx, "ServiceBuilder created")
+
+	service, err := serviceBuilder.Build(ctx)
+	if err != nil {
+		logger.Error(ctx, "Failed to create daemon service",
+			logging.Field{Key: "error", Value: err.Error()},
+		)
+		panic(fmt.Sprintf("Failed to build daemon service: %v", err))
+	}
+
+	logger.Info(ctx, "ServiceBuilder.Build succeeded")
+	return service
+}
+
 // NewDaemonServiceWithDependencies creates daemon service with injected dependencies
 func NewDaemonServiceWithDependencies(
 	workDir string,
