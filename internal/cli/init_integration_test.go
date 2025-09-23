@@ -98,7 +98,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		assert.Equal(t, "ssh-owner/ssh-repo", cfg.GitHub.Repository)
 	})
 
-	t.Run("should use default repository if no remote configured", func(t *testing.T) {
+	t.Run("should fail if no remote configured", func(t *testing.T) {
 		// Setup: Create a temporary directory with git repository but no remote
 		tempDir := t.TempDir()
 		oldDir, _ := os.Getwd()
@@ -119,20 +119,16 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
 
-		// Execute init
+		// Execute init - should fail without remote
 		err = runInitWithClient(context.Background(), []string{}, nil)
-		require.NoError(t, err)
 
-		// Verify config file was created
+		// Assert that it fails with proper error message
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "git remote")
+
+		// Verify config file was not created
 		configPath := filepath.Join(tempDir, ".soba", "config.yml")
-		assert.FileExists(t, configPath)
-
-		// Load and verify the config
-		cfg, err := config.Load(configPath)
-		require.NoError(t, err)
-
-		// Verify default repository is used
-		assert.Equal(t, "douhashi/soba-cli", cfg.GitHub.Repository)
+		assert.NoFileExists(t, configPath)
 	})
 
 	t.Run("should fail if not a git repository", func(t *testing.T) {

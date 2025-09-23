@@ -29,7 +29,7 @@ func GenerateTemplateWithOptions(opts *TemplateOptions) string {
 func generateFallbackTemplate() string {
 	return `# GitHub settings
 github:
-  repository: douhashi/soba-cli
+  repository:
 
 workflow:
   interval: 20

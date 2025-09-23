@@ -34,7 +34,8 @@ func TestGenerateTemplate(t *testing.T) {
 
 		// Check default values are present
 		assert.Contains(t, template, "auth_method: gh")
-		assert.Contains(t, template, "repository: douhashi/soba-cli")
+		assert.Contains(t, template, "repository: ")
+		assert.NotContains(t, template, "douhashi/soba-cli")
 		assert.Contains(t, template, "interval: 20")
 		assert.Contains(t, template, "use_tmux: true")
 		assert.Contains(t, template, "auto_merge_enabled: true")
@@ -94,7 +95,7 @@ func TestGenerateTemplate(t *testing.T) {
 
 		// Verify structure is correct
 		assert.Equal(t, "gh", config.GitHub.AuthMethod)
-		assert.Equal(t, "douhashi/soba-cli", config.GitHub.Repository)
+		assert.Equal(t, "", config.GitHub.Repository)
 		assert.Equal(t, 20, config.Workflow.Interval)
 		assert.True(t, config.Workflow.UseTmux)
 		assert.True(t, config.Workflow.AutoMergeEnabled)
@@ -140,24 +141,26 @@ func TestGenerateTemplateWithOptions(t *testing.T) {
 
 		// Assert custom repository is used
 		assert.Contains(t, template, "repository: myorg/myrepo")
-		assert.NotContains(t, template, "repository: douhashi/soba-cli")
+		assert.NotContains(t, template, "douhashi/soba-cli")
 	})
 
-	t.Run("should use default values when opts is nil", func(t *testing.T) {
+	t.Run("should use empty repository when opts is nil", func(t *testing.T) {
 		template := GenerateTemplateWithOptions(nil)
 
-		// Assert default repository is used
-		assert.Contains(t, template, "repository: douhashi/soba-cli")
+		// Assert empty repository is used
+		assert.Contains(t, template, "repository: ")
+		assert.NotContains(t, template, "douhashi/soba-cli")
 	})
 
-	t.Run("should use default values when repository is empty", func(t *testing.T) {
+	t.Run("should use empty values when repository is empty", func(t *testing.T) {
 		opts := &TemplateOptions{
 			Repository: "",
 		}
 		template := GenerateTemplateWithOptions(opts)
 
-		// Assert default repository is used
-		assert.Contains(t, template, "repository: douhashi/soba-cli")
+		// Assert empty repository is used
+		assert.Contains(t, template, "repository: ")
+		assert.NotContains(t, template, "douhashi/soba-cli")
 	})
 
 	t.Run("generated template with custom options should be valid YAML", func(t *testing.T) {

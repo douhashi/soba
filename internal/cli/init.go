@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,12 +61,10 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	// Try to get repository information
 	repository, err := gitClient.GetRepository()
 	if err != nil {
-		// Log warning but continue with default
-		log.Warn(ctx, "Failed to detect repository from git remote", logging.Field{Key: "error", Value: err.Error()})
-		repository = ""
-	} else {
-		log.Info(ctx, "Detected repository from git remote", logging.Field{Key: "repository", Value: repository})
+		// Repository is required for soba to work properly
+		return fmt.Errorf("failed to detect repository from git remote. Please ensure git remote origin is configured: %w", err)
 	}
+	log.Info(ctx, "Detected repository from git remote", logging.Field{Key: "repository", Value: repository})
 
 	// Define paths
 	sobaDir := filepath.Join(currentDir, ".soba")

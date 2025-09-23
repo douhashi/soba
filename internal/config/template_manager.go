@@ -29,9 +29,7 @@ func (tm *templateManager) RenderTemplate(opts *TemplateOptions) (string, error)
 	if opts == nil {
 		opts = &TemplateOptions{}
 	}
-	if opts.Repository == "" {
-		opts.Repository = "douhashi/soba-cli"
-	}
+	// Repository should be set by the caller - no default value
 	if opts.LogLevel == "" {
 		opts.LogLevel = "info"
 	}

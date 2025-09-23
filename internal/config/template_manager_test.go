@@ -72,14 +72,17 @@ func TestConfigTemplateManager_RenderTemplate(t *testing.T) {
 			},
 		},
 		{
-			name: "empty repository fallback to default",
+			name: "empty repository should remain empty",
 			options: &TemplateOptions{
 				Repository: "",
 				LogLevel:   "info",
 			},
 			wantContain: []string{
-				"repository: douhashi/soba-cli",
+				"repository: ",
 				"level: info",
+			},
+			wantNotContain: []string{
+				"douhashi/soba-cli",
 			},
 		},
 		{
@@ -94,11 +97,14 @@ func TestConfigTemplateManager_RenderTemplate(t *testing.T) {
 			},
 		},
 		{
-			name:    "nil options uses defaults",
+			name:    "nil options uses empty repository and default log level",
 			options: nil,
 			wantContain: []string{
-				"repository: douhashi/soba-cli",
+				"repository: ",
 				"level: info",
+			},
+			wantNotContain: []string{
+				"douhashi/soba-cli",
 			},
 		},
 	}
