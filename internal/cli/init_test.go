@@ -400,3 +400,135 @@ func (m *MockGitHubClient) ListLabels(ctx context.Context, owner, repo string) (
 
 	return m.ExistingLabels, nil
 }
+
+func TestCopyClaudeCommandTemplates(t *testing.T) {
+	t.Run("should copy template files to target directory", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+
+		// Create template source directory and files
+		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(templateDir, 0755))
+
+		templateFiles := map[string]string{
+			"plan.md":      "# Plan template",
+			"implement.md": "# Implement template",
+			"review.md":    "# Review template",
+			"revise.md":    "# Revise template",
+		}
+
+		for filename, content := range templateFiles {
+			filepath := filepath.Join(templateDir, filename)
+			require.NoError(t, os.WriteFile(filepath, []byte(content), 0644))
+		}
+
+		// Set current directory to temp dir for relative path resolution
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Execute
+		err := copyClaudeCommandTemplates()
+
+		// Assert
+		assert.NoError(t, err)
+
+		// Verify files are copied to target location
+		targetDir := filepath.Join(tempDir, ".claude", "commands", "soba")
+		for filename, expectedContent := range templateFiles {
+			targetPath := filepath.Join(targetDir, filename)
+			assert.FileExists(t, targetPath)
+
+			content, err := os.ReadFile(targetPath)
+			require.NoError(t, err)
+			assert.Equal(t, expectedContent, string(content))
+		}
+	})
+
+	t.Run("should not overwrite existing files", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+
+		// Create template source directory and files
+		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(templateDir, 0755))
+
+		require.NoError(t, os.WriteFile(filepath.Join(templateDir, "plan.md"), []byte("# New plan template"), 0644))
+
+		// Create target directory with existing file
+		targetDir := filepath.Join(tempDir, ".claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(targetDir, 0755))
+
+		existingContent := []byte("# Existing plan content")
+		existingFile := filepath.Join(targetDir, "plan.md")
+		require.NoError(t, os.WriteFile(existingFile, existingContent, 0644))
+
+		// Set current directory to temp dir for relative path resolution
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Execute
+		err := copyClaudeCommandTemplates()
+
+		// Assert
+		assert.NoError(t, err)
+
+		// Verify existing file is not overwritten
+		content, err := os.ReadFile(existingFile)
+		require.NoError(t, err)
+		assert.Equal(t, existingContent, content)
+	})
+
+	t.Run("should handle missing template directory gracefully", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+
+		// Set current directory to temp dir (no templates directory exists)
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Execute
+		err := copyClaudeCommandTemplates()
+
+		// Assert - should not fail, just skip copying
+		assert.NoError(t, err)
+
+		// Verify no target directory is created
+		targetDir := filepath.Join(tempDir, ".claude", "commands", "soba")
+		_, err = os.Stat(targetDir)
+		assert.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("should handle file copy errors gracefully", func(t *testing.T) {
+		// Skip if running as root
+		if os.Geteuid() == 0 {
+			t.Skip("Test cannot run as root")
+		}
+
+		// Setup
+		tempDir := t.TempDir()
+
+		// Create template source directory and files
+		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(templateDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(templateDir, "plan.md"), []byte("# Plan template"), 0644))
+
+		// Create .claude directory with no write permission
+		claudeDir := filepath.Join(tempDir, ".claude")
+		require.NoError(t, os.MkdirAll(claudeDir, 0555))
+		defer os.Chmod(claudeDir, 0755) // Restore permission for cleanup
+
+		// Set current directory to temp dir for relative path resolution
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Execute
+		err := copyClaudeCommandTemplates()
+
+		// Assert - should return error but function should handle it gracefully
+		assert.Error(t, err)
+	})
+}

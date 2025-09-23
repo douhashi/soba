@@ -56,6 +56,116 @@ func TestInitWithGitRepository(t *testing.T) {
 		assert.Equal(t, "test-owner/test-repo", cfg.GitHub.Repository)
 	})
 
+	t.Run("should copy Claude command templates when templates directory exists", func(t *testing.T) {
+		// Setup: Create a temporary directory with git repository
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository
+		cmd := exec.Command("git", "init")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
+		// Add remote
+		cmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add remote: %s", string(output))
+
+		// Create template files
+		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(templateDir, 0755))
+
+		templateFiles := map[string]string{
+			"plan.md":      "# Plan template content",
+			"implement.md": "# Implement template content",
+			"review.md":    "# Review template content",
+			"revise.md":    "# Revise template content",
+		}
+
+		for filename, content := range templateFiles {
+			filePath := filepath.Join(templateDir, filename)
+			require.NoError(t, os.WriteFile(filePath, []byte(content), 0644))
+		}
+
+		// Execute init
+		err = runInitWithClient(context.Background(), []string{}, nil)
+		require.NoError(t, err)
+
+		// Verify config file was created
+		configPath := filepath.Join(tempDir, ".soba", "config.yml")
+		assert.FileExists(t, configPath)
+
+		// Verify Claude command templates were copied
+		claudeDir := filepath.Join(tempDir, ".claude", "commands", "soba")
+		for filename, expectedContent := range templateFiles {
+			targetPath := filepath.Join(claudeDir, filename)
+			assert.FileExists(t, targetPath)
+
+			content, err := os.ReadFile(targetPath)
+			require.NoError(t, err)
+			assert.Equal(t, expectedContent, string(content))
+		}
+	})
+
+	t.Run("should not overwrite existing Claude command templates", func(t *testing.T) {
+		// Setup: Create a temporary directory with git repository
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository
+		cmd := exec.Command("git", "init")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
+		// Add remote
+		cmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add remote: %s", string(output))
+
+		// Create template files
+		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(templateDir, 0755))
+		require.NoError(t, os.WriteFile(filepath.Join(templateDir, "plan.md"), []byte("# New template content"), 0644))
+
+		// Create existing Claude command template
+		claudeDir := filepath.Join(tempDir, ".claude", "commands", "soba")
+		require.NoError(t, os.MkdirAll(claudeDir, 0755))
+		existingContent := []byte("# Existing template content")
+		existingFile := filepath.Join(claudeDir, "plan.md")
+		require.NoError(t, os.WriteFile(existingFile, existingContent, 0644))
+
+		// Execute init
+		err = runInitWithClient(context.Background(), []string{}, nil)
+		require.NoError(t, err)
+
+		// Verify existing file was not overwritten
+		content, err := os.ReadFile(existingFile)
+		require.NoError(t, err)
+		assert.Equal(t, existingContent, content)
+	})
+
 	t.Run("should detect repository from SSH git remote", func(t *testing.T) {
 		// Setup: Create a temporary directory with git repository
 		tempDir := t.TempDir()
