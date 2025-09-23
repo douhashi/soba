@@ -231,14 +231,14 @@ func copyClaudeCommandTemplates() error {
 	targetDir := filepath.Join(currentDir, ".claude", "commands", "soba")
 
 	// Check if source directory exists
-	if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
+	if _, statErr := os.Stat(sourceDir); os.IsNotExist(statErr) {
 		// Source directory doesn't exist, skip silently
 		return nil
 	}
 
 	// Create target directory if it doesn't exist
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return err
+	if mkdirErr := os.MkdirAll(targetDir, 0755); mkdirErr != nil {
+		return mkdirErr
 	}
 
 	// Read source directory
@@ -257,13 +257,13 @@ func copyClaudeCommandTemplates() error {
 		targetPath := filepath.Join(targetDir, entry.Name())
 
 		// Check if target file already exists
-		if _, err := os.Stat(targetPath); err == nil {
+		if _, statErr := os.Stat(targetPath); statErr == nil {
 			// File already exists, skip
 			continue
 		}
 
 		// Copy file
-		if err := copyFile(sourcePath, targetPath); err != nil {
+		if copyErr := copyFile(sourcePath, targetPath); copyErr != nil {
 			// Log error but continue with other files
 			continue
 		}
