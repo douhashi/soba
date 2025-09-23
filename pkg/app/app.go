@@ -74,6 +74,34 @@ func MustInitializeWithOptions(configPath string, opts *InitOptions) {
 	initialized = true
 }
 
+// MustInitializeMinimal initializes minimal app state for commands that don't need config
+func MustInitializeMinimal() {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if initialized {
+		// Already initialized, nothing to do
+		return
+	}
+
+	// Create Logger Factory with defaults
+	var err error
+	logFactory, err = logging.NewFactory(logging.Config{
+		Level:        "warn",
+		Format:       "text",
+		Output:       "stdout",
+		AlsoToStdout: false,
+	})
+	if err != nil {
+		panic("failed to create logger factory: " + err.Error())
+	}
+
+	// cfg remains nil for minimal initialization
+	// Slack is not initialized
+
+	initialized = true
+}
+
 // MustInitializeForTest initializes the application for testing
 func MustInitializeForTest(testConfig *config.Config) {
 	mu.Lock()

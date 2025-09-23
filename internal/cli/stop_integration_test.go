@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/pkg/app"
 )
 
 func TestStopCommandIntegration(t *testing.T) {
@@ -129,6 +131,58 @@ workflow:
 
 		// PIDファイルを手動で削除
 		os.Remove(pidFile)
+	})
+}
+
+func TestStopCommandWithoutConfig(t *testing.T) {
+	// Reset app state for clean test
+	app.Reset()
+
+	// テスト用の一時ディレクトリを作成（設定ファイルなし）
+	tmpDir := t.TempDir()
+	sobaDir := filepath.Join(tmpDir, ".soba")
+	require.NoError(t, os.MkdirAll(sobaDir, 0755))
+
+	// 元のディレクトリを保存して、テスト終了後に戻る
+	originalDir, err := os.Getwd()
+	require.NoError(t, err)
+	defer os.Chdir(originalDir)
+
+	// 作業ディレクトリを変更
+	require.NoError(t, os.Chdir(tmpDir))
+
+	t.Run("Stop without config file when daemon is not running", func(t *testing.T) {
+		// stopコマンドを実行（設定ファイルなし）
+		cmd := newStopCmd()
+		cmd.SetArgs([]string{})
+
+		// デーモンが起動していない状態でstopを実行（エラーが返る）
+		err := cmd.Execute()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "daemon is not running")
+		// 重要: repository configuration requiredエラーが出ないことを確認
+		assert.NotContains(t, err.Error(), "repository configuration is required")
+	})
+
+	t.Run("Stop without config file with PID file", func(t *testing.T) {
+		// PIDファイルを作成（存在しないPID）
+		pidFile := filepath.Join(sobaDir, "soba.pid")
+		require.NoError(t, os.WriteFile(pidFile, []byte("999999"), 0600))
+
+		// stopコマンドを実行
+		cmd := newStopCmd()
+		cmd.SetArgs([]string{})
+
+		// PIDが存在しないプロセスのため、エラーになる
+		err := cmd.Execute()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "process not found")
+		// 重要: repository configuration requiredエラーが出ないことを確認
+		assert.NotContains(t, err.Error(), "repository configuration is required")
+
+		// PIDファイルが削除されていることを確認
+		_, err = os.Stat(pidFile)
+		assert.True(t, os.IsNotExist(err), "PID file should be deleted")
 	})
 }
 

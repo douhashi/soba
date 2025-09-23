@@ -22,13 +22,10 @@ func (m *MockStopService) Stop(ctx context.Context, repository string) error {
 }
 
 func TestStopCommand(t *testing.T) {
-	// Initialize app for testing
-	helper := app.NewTestHelper(t)
-	helper.InitializeForTest()
-
 	tests := []struct {
 		name           string
 		args           []string
+		setupApp       func()
 		setupMock      func(*MockStopService)
 		expectedOutput string
 		wantError      bool
@@ -36,6 +33,11 @@ func TestStopCommand(t *testing.T) {
 		{
 			name: "Stop daemon successfully",
 			args: []string{},
+			setupApp: func() {
+				// Initialize app for testing
+				helper := app.NewTestHelper(t)
+				helper.InitializeForTest()
+			},
 			setupMock: func(daemon *MockStopService) {
 				daemon.On("Stop", mock.Anything, mock.Anything).Return(nil)
 			},
@@ -45,16 +47,40 @@ func TestStopCommand(t *testing.T) {
 		{
 			name: "Stop daemon with error",
 			args: []string{},
+			setupApp: func() {
+				// Initialize app for testing
+				helper := app.NewTestHelper(t)
+				helper.InitializeForTest()
+			},
 			setupMock: func(daemon *MockStopService) {
 				daemon.On("Stop", mock.Anything, mock.Anything).Return(assert.AnError)
 			},
 			expectedOutput: "",
 			wantError:      true,
 		},
+		{
+			name: "Stop daemon without config file",
+			args: []string{},
+			setupApp: func() {
+				// Reset app to ensure no config is loaded
+				app.Reset()
+				// Initialize minimal app without config
+				app.MustInitializeMinimal()
+			},
+			setupMock: func(daemon *MockStopService) {
+				// Repository情報が空でも動作することを確認
+				daemon.On("Stop", mock.Anything, "").Return(nil)
+			},
+			expectedOutput: "Daemon stopped successfully\n",
+			wantError:      false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Setup app state
+			tt.setupApp()
+
 			// モックの準備
 			mockDaemon := new(MockStopService)
 			tt.setupMock(mockDaemon)
@@ -81,6 +107,9 @@ func TestStopCommand(t *testing.T) {
 
 			// モックの検証
 			mockDaemon.AssertExpectations(t)
+
+			// Clean up
+			app.Reset()
 		})
 	}
 }

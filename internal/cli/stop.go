@@ -24,7 +24,11 @@ func newStopCmd() *cobra.Command {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
-	daemonService := service.NewDaemonService(app.LogFactory())
+	// Initialize app with minimal setup for stop command
+	// This avoids the need for config file
+	app.MustInitializeMinimal()
+
+	daemonService := service.NewDaemonServiceForStop(app.LogFactory())
 	return runStopWithService(cmd, args, daemonService)
 }
 
@@ -37,13 +41,14 @@ type StopServiceInterface interface {
 func runStopWithService(cmd *cobra.Command, _ []string, daemonService StopServiceInterface) error {
 	log := app.LogFactory().CreateComponentLogger("cli")
 
-	// Get config from global app
-	cfg := app.Config()
-
-	// Get repository from config
+	// Try to get config from global app if available
+	// But don't fail if config is not available
 	var repository string
-	if cfg != nil {
-		repository = cfg.GitHub.Repository
+	if app.IsInitialized() {
+		cfg := app.Config()
+		if cfg != nil {
+			repository = cfg.GitHub.Repository
+		}
 	}
 
 	ctx := context.Background()

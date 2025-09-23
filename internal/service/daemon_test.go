@@ -887,3 +887,47 @@ func TestDaemonService_ClosedIssueCleanupServiceStartupLog(t *testing.T) {
 		})
 	}
 }
+
+// TestNewDaemonServiceForStop tests the Stop-specific daemon service factory
+func TestNewDaemonServiceForStop(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTest()
+
+	// Test that NewDaemonServiceForStop creates a service without config dependency
+	service := NewDaemonServiceForStop(app.LogFactory())
+	assert.NotNil(t, service, "NewDaemonServiceForStop should create a daemon service")
+}
+
+// TestStopMethodWithEmptyRepository tests Stop method with empty repository
+func TestStopMethodWithEmptyRepository(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTest()
+
+	// Create a minimal daemon service for Stop
+	daemonService := &daemonService{
+		workDir: tmpDir,
+		tmux:    nil, // tmux client is optional for Stop
+		logger:  app.LogFactory().CreateComponentLogger("daemon-test"),
+	}
+
+	// Create PID file to simulate running daemon
+	pidFile := filepath.Join(tmpDir, ".soba", "soba.pid")
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".soba"), 0755))
+	require.NoError(t, os.WriteFile(pidFile, []byte("99999"), 0644)) // Non-existent PID
+
+	// Test Stop with empty repository
+	ctx := context.Background()
+	err := daemonService.Stop(ctx, "")
+
+	// Should handle gracefully (process not found is expected)
+	assert.Error(t, err, "Should return error for non-existent process")
+	assert.Contains(t, err.Error(), "process not found")
+
+	// PID file should be removed even on error
+	_, statErr := os.Stat(pidFile)
+	assert.True(t, os.IsNotExist(statErr), "PID file should be removed")
+}
