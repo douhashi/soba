@@ -68,7 +68,10 @@ func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, infra.NewConfigLoadError(path, "file not found")
+			// Return default config when file doesn't exist
+			cfg := &Config{}
+			cfg.setDefaults()
+			return cfg, nil
 		}
 		if os.IsPermission(err) {
 			return nil, infra.NewConfigLoadError(path, "permission denied")
@@ -100,6 +103,11 @@ func Load(path string) (*Config, error) {
 // based on the configuration settings
 func expandEnvVarsWithConfig(content string, cfg *Config) string {
 	return os.Expand(content, func(key string) string {
+		// Special handling for PID - don't expand it here, it's replaced at daemon startup
+		if key == "PID" {
+			return "${PID}"
+		}
+
 		if value, ok := os.LookupEnv(key); ok {
 			return value
 		}
@@ -132,7 +140,7 @@ func (c *Config) setDefaults() {
 		c.Workflow.TmuxCommandDelay = 3
 	}
 	if c.Git.WorktreeBasePath == "" {
-		c.Git.WorktreeBasePath = ".git/soba/worktrees"
+		c.Git.WorktreeBasePath = DefaultWorktreeBasePath
 	}
 	if c.Git.BaseBranch == "" {
 		c.Git.BaseBranch = "main"

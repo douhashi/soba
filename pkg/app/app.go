@@ -1,6 +1,9 @@
 package app
 
 import (
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/douhashi/soba/internal/config"
@@ -56,11 +59,17 @@ func MustInitializeWithOptions(configPath string, opts *InitOptions) {
 		logLevel = "warn" // Default
 	}
 
+	// Replace ${PID} in log output path
+	logOutputPath := cfg.Log.OutputPath
+	if strings.Contains(logOutputPath, "${PID}") {
+		logOutputPath = strings.ReplaceAll(logOutputPath, "${PID}", strconv.Itoa(os.Getpid()))
+	}
+
 	// Create Logger Factory
 	logFactory, err = logging.NewFactory(logging.Config{
 		Level:        logLevel,
 		Format:       cfg.Log.Format,
-		Output:       cfg.Log.OutputPath,
+		Output:       logOutputPath,
 		AlsoToStdout: true,
 	})
 	if err != nil {

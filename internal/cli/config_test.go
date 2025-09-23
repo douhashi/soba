@@ -103,10 +103,13 @@ log:
 	helper := app.NewTestHelper(t)
 	helper.InitializeForTestWithOptions(minimalConfigPath, nil)
 
-	// Now test that accessing a non-existent config returns an error
-	_, err := config.Load(nonExistentPath)
-	require.Error(t, err)
-	assert.Contains(t, strings.ToLower(err.Error()), "not found")
+	// Now test that accessing a non-existent config returns default config
+	cfg, err := config.Load(nonExistentPath)
+	require.NoError(t, err)
+	assert.NotNil(t, cfg)
+	// Verify defaults are set
+	assert.Equal(t, 20, cfg.Workflow.Interval)
+	assert.Equal(t, ".git/soba/worktrees", cfg.Git.WorktreeBasePath)
 }
 
 func TestRunConfig_InvalidYAML(t *testing.T) {
