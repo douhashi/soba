@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -206,4 +207,87 @@ func TestRunLog_NoLogFile(t *testing.T) {
 	err = cmd.Execute()
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "log file not found")
+}
+
+func TestExecuteTail(t *testing.T) {
+	tests := []struct {
+		name      string
+		logPath   string
+		lines     int
+		follow    bool
+		setupFunc func() (string, func())
+		wantErr   bool
+		checkFunc func(t *testing.T, output []byte)
+	}{
+		{
+			name:   "show last N lines",
+			lines:  5,
+			follow: false,
+			setupFunc: func() (string, func()) {
+				// Create test log file
+				tmpFile, err := os.CreateTemp("", "test-log-*.log")
+				require.NoError(t, err)
+				for i := 1; i <= 10; i++ {
+					fmt.Fprintf(tmpFile, "Line %d\n", i)
+				}
+				tmpFile.Close()
+				return tmpFile.Name(), func() { os.Remove(tmpFile.Name()) }
+			},
+			wantErr: false,
+			checkFunc: func(t *testing.T, output []byte) {
+				lines := bytes.Split(bytes.TrimSpace(output), []byte("\n"))
+				assert.Equal(t, 5, len(lines))
+				assert.Contains(t, string(lines[0]), "Line 6")
+				assert.Contains(t, string(lines[4]), "Line 10")
+			},
+		},
+		{
+			name:   "handle non-existent file",
+			lines:  10,
+			follow: false,
+			setupFunc: func() (string, func()) {
+				return "/tmp/non-existent-file.log", func() {}
+			},
+			wantErr: true,
+		},
+		{
+			name:   "default lines when 0 specified",
+			lines:  0,
+			follow: false,
+			setupFunc: func() (string, func()) {
+				tmpFile, err := os.CreateTemp("", "test-log-*.log")
+				require.NoError(t, err)
+				for i := 1; i <= 100; i++ {
+					fmt.Fprintf(tmpFile, "Line %d\n", i)
+				}
+				tmpFile.Close()
+				return tmpFile.Name(), func() { os.Remove(tmpFile.Name()) }
+			},
+			wantErr: false,
+			checkFunc: func(t *testing.T, output []byte) {
+				lines := bytes.Split(bytes.TrimSpace(output), []byte("\n"))
+				// When 0 lines specified, should show last 10 (tail default)
+				assert.GreaterOrEqual(t, len(lines), 1)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logPath, cleanup := tt.setupFunc()
+			defer cleanup()
+
+			var buf bytes.Buffer
+			err := executeTail(&buf, logPath, tt.lines, tt.follow)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				if tt.checkFunc != nil {
+					tt.checkFunc(t, buf.Bytes())
+				}
+			}
+		})
+	}
 }

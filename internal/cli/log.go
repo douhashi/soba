@@ -1,14 +1,16 @@
 package cli
 
 import (
-	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
+	"syscall"
 
 	"github.com/spf13/cobra"
 )
@@ -78,67 +80,99 @@ func runLog(cmd *cobra.Command, lines int, follow bool) error {
 }
 
 func tailLog(cmd *cobra.Command, logPath string, lines int) error {
-	file, err := os.Open(logPath)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
-	}
-	defer file.Close()
-
-	// Read all lines into memory
-	allLines := make([]string, 0, 1000) // Pre-allocate with reasonable capacity
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		allLines = append(allLines, scanner.Text())
-	}
-
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read log file: %w", err)
-	}
-
-	// Get last N lines
-	start := 0
-	if len(allLines) > lines {
-		start = len(allLines) - lines
-	}
-
-	// Output the lines
-	for i := start; i < len(allLines); i++ {
-		fmt.Fprintln(cmd.OutOrStdout(), allLines[i])
-	}
-
-	return nil
+	// Use tail command to display log file
+	return executeTail(cmd.OutOrStdout(), logPath, lines, false)
 }
 
 func followLog(cmd *cobra.Command, logPath string) error {
-	file, err := os.Open(logPath)
-	if err != nil {
-		return fmt.Errorf("failed to open log file: %w", err)
-	}
-	defer file.Close()
+	// Use tail -f command to follow log file
+	return executeTail(cmd.OutOrStdout(), logPath, 30, true)
+}
 
-	// First, output existing content
-	if err := tailLog(cmd, logPath, 30); err != nil {
-		return err
-	}
-
-	// Seek to end of file
-	if _, err := file.Seek(0, io.SeekEnd); err != nil {
-		return fmt.Errorf("failed to seek to end of file: %w", err)
+// executeTail executes tail command to display log file contents
+func executeTail(w io.Writer, logPath string, lines int, follow bool) error {
+	// Check if tail command is available
+	if _, err := exec.LookPath("tail"); err != nil {
+		return fmt.Errorf("tail command not found in PATH. Please ensure 'tail' is installed and available")
 	}
 
-	// Follow new content
-	scanner := bufio.NewScanner(file)
-	for {
-		if scanner.Scan() {
-			fmt.Fprintln(cmd.OutOrStdout(), scanner.Text())
-		} else {
-			// No new content, wait a bit
-			time.Sleep(100 * time.Millisecond)
+	// Build tail command arguments
+	args := []string{"-n", strconv.Itoa(lines)}
+	if follow {
+		args = append(args, "-f")
+	}
+	args = append(args, logPath)
+
+	// Create tail command
+	cmd := exec.Command("tail", args...)
+	cmd.Stdout = w
+	cmd.Stderr = os.Stderr
+
+	if follow {
+		return executeTailFollow(cmd, logPath)
+	}
+	return executeTailNormal(cmd, logPath)
+}
+
+// executeTailFollow handles tail -f mode with signal interruption
+func executeTailFollow(cmd *exec.Cmd, logPath string) error {
+	// Setup signal handler for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
+
+	go func() {
+		<-sigChan
+		cancel()
+		if cmd.Process != nil {
+			cmd.Process.Kill()
 		}
+	}()
 
-		// Check for errors
-		if err := scanner.Err(); err != nil {
-			return fmt.Errorf("error reading log file: %w", err)
+	// Run tail command
+	if err := cmd.Start(); err != nil {
+		return handleTailError(err, logPath, "failed to start tail command")
+	}
+
+	// Wait for command completion or interruption
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-done:
+		if err != nil {
+			return handleTailError(err, logPath, "tail command failed")
+		}
+		return nil
+	}
+}
+
+// executeTailNormal handles normal tail mode
+func executeTailNormal(cmd *exec.Cmd, logPath string) error {
+	if err := cmd.Run(); err != nil {
+		return handleTailError(err, logPath, "tail command failed")
+	}
+	return nil
+}
+
+// handleTailError processes tail command errors
+func handleTailError(err error, logPath string, defaultMsg string) error {
+	if os.IsPermission(err) {
+		return fmt.Errorf("permission denied to execute tail command: %w", err)
+	}
+	// Check for specific exit codes
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() == 1 {
+			// tail returns 1 for file not found or permission issues
+			return fmt.Errorf("cannot read log file %s: %w", logPath, err)
 		}
 	}
+	return fmt.Errorf("%s: %w", defaultMsg, err)
 }
