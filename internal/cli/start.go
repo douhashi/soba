@@ -12,30 +12,30 @@ import (
 )
 
 func newStartCmd() *cobra.Command {
-	var daemon bool
+	var foreground bool
 
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "Start Issue monitoring in foreground or daemon mode",
-		Long: `Start Issue monitoring process. By default, runs in foreground mode.
-Use -d/--daemon flag to run in daemon mode (background).
+		Short: "Start Issue monitoring (daemon mode by default)",
+		Long: `Start Issue monitoring process. By default, runs in daemon mode (background).
+Use -f/--foreground flag to run in foreground mode.
 Use -v/--verbose flag to enable debug logging.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runStart(cmd, args, daemon)
+			return runStart(cmd, args, foreground)
 		},
 	}
 
-	cmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "run in daemon mode (background)")
+	cmd.Flags().BoolVarP(&foreground, "foreground", "f", false, "run in foreground mode")
 
 	return cmd
 }
 
-func runStart(cmd *cobra.Command, args []string, daemon bool) error {
+func runStart(cmd *cobra.Command, args []string, foreground bool) error {
 	// Create service using global LogFactory and Config
 	// (app is already initialized with proper log level)
 	cfg := app.Config()
 	daemonService := service.NewDaemonServiceWithConfig(cfg, app.LogFactory())
-	return runStartWithService(cmd, args, daemon, daemonService)
+	return runStartWithService(cmd, args, foreground, daemonService)
 }
 
 // DaemonServiceInterface はデーモンサービスのインターフェース（テスト用）
@@ -45,7 +45,7 @@ type DaemonServiceInterface interface {
 }
 
 // runStartWithService allows dependency injection for testing
-func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonService DaemonServiceInterface) error {
+func runStartWithService(cmd *cobra.Command, _ []string, foreground bool, daemonService DaemonServiceInterface) error {
 	log := app.LogFactory().CreateComponentLogger("cli")
 
 	// Get config from global app
@@ -53,18 +53,7 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonServ
 
 	ctx := context.Background()
 
-	if daemon {
-		log.Info(ctx, "Starting Issue monitoring in daemon mode")
-
-		// Slack通知: デーモン開始
-		slack.Notify("🚀 Soba daemon started")
-
-		err := daemonService.StartDaemon(ctx, cfg)
-		if err == nil {
-			cmd.Printf("Successfully started daemon mode\n")
-		}
-		return err
-	} else {
+	if foreground {
 		log.Info(ctx, "Starting Issue monitoring in foreground mode")
 
 		// Slack通知: フォアグラウンド開始
@@ -73,6 +62,17 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonServ
 		err := daemonService.StartForeground(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Issue monitoring stopped\n")
+		}
+		return err
+	} else {
+		log.Info(ctx, "Starting Issue monitoring in daemon mode")
+
+		// Slack通知: デーモン開始
+		slack.Notify("🚀 Soba daemon started")
+
+		err := daemonService.StartDaemon(ctx, cfg)
+		if err == nil {
+			cmd.Printf("Successfully started daemon mode\n")
 		}
 		return err
 	}

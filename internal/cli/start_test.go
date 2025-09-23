@@ -20,12 +20,12 @@ import (
 func TestNewStartCmd(t *testing.T) {
 	cmd := newStartCmd()
 	assert.Equal(t, "start", cmd.Use)
-	assert.Equal(t, "Start Issue monitoring in foreground or daemon mode", cmd.Short)
+	assert.Equal(t, "Start Issue monitoring (daemon mode by default)", cmd.Short)
 
 	// フラグをテスト
-	daemonFlag := cmd.Flags().Lookup("daemon")
-	require.NotNil(t, daemonFlag)
-	assert.Equal(t, "bool", daemonFlag.Value.Type())
+	foregroundFlag := cmd.Flags().Lookup("foreground")
+	require.NotNil(t, foregroundFlag)
+	assert.Equal(t, "bool", foregroundFlag.Value.Type())
 
 }
 
@@ -76,7 +76,7 @@ workflow:
 	}
 
 	cmd := &cobra.Command{}
-	err = runStartWithService(cmd, []string{}, false, mockService)
+	err = runStartWithService(cmd, []string{}, true, mockService)
 	assert.NoError(t, err)
 	assert.True(t, mockService.startForegroundCalled)
 }
@@ -128,7 +128,7 @@ workflow:
 	}
 
 	cmd := &cobra.Command{}
-	err = runStartWithService(cmd, []string{}, true, mockService)
+	err = runStartWithService(cmd, []string{}, false, mockService)
 	assert.NoError(t, err)
 	assert.True(t, mockService.startDaemonCalled)
 }
@@ -200,11 +200,11 @@ func TestRunStart_LogFileCreation(t *testing.T) {
 	}{
 		{
 			name:       "Foreground mode creates log file",
-			daemonMode: false,
+			daemonMode: true,
 		},
 		{
 			name:       "Daemon mode creates log file",
-			daemonMode: true,
+			daemonMode: false,
 		},
 	}
 
@@ -285,9 +285,9 @@ log:
 			assert.NoError(t, err)
 
 			if tt.daemonMode {
-				assert.True(t, mockService.startDaemonCalled)
-			} else {
 				assert.True(t, mockService.startForegroundCalled)
+			} else {
+				assert.True(t, mockService.startDaemonCalled)
 			}
 		})
 	}
