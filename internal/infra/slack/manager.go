@@ -34,6 +34,13 @@ func Initialize(cfg *config.Config, logger logging.Logger) {
 			return
 		}
 
+		// Check if GitHub repository is configured
+		if cfg.GitHub.Repository == "" {
+			logger.Warn(context.Background(), "GitHub repository not configured, falling back to NoOp manager")
+			instance = &NoOpManager{}
+			return
+		}
+
 		// Use default timeout of 30 seconds
 		timeout := 30 * time.Second
 		client := NewClient(cfg.Slack.WebhookURL, timeout)
@@ -55,7 +62,9 @@ func Initialize(cfg *config.Config, logger logging.Logger) {
 			logger:          logger,
 			templateManager: templateManager,
 		}
-		logger.Info(context.Background(), "Slack notifications enabled with block templates")
+		logger.Info(context.Background(), "Slack notifications enabled with block templates",
+			logging.Field{Key: "repository", Value: cfg.GitHub.Repository},
+		)
 	})
 }
 
@@ -133,11 +142,21 @@ func (s *SlackManager) sendBlockMessage(templateName string, data interface{}) {
 
 // Implementation methods
 func (s *SlackManager) NotifyPhaseStart(phase string, issueNumber int) {
+	// Ensure repository is set, use a fallback if empty
+	repository := s.githubConfig.Repository
+	if repository == "" {
+		s.logger.Warn(context.Background(), "Repository not configured for NotifyPhaseStart",
+			logging.Field{Key: "phase", Value: phase},
+			logging.Field{Key: "issueNumber", Value: issueNumber},
+		)
+		repository = "unknown/repository"
+	}
+
 	data := PhaseStartData{
 		Phase:       phase,
 		IssueNumber: issueNumber,
 		IssueURL:    s.buildIssueURL(issueNumber),
-		Repository:  s.githubConfig.Repository,
+		Repository:  repository,
 	}
 	s.sendBlockMessage("phase_start", data)
 }
