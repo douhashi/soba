@@ -9,7 +9,6 @@ import (
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/git"
 	"github.com/douhashi/soba/internal/infra/github"
-	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/internal/infra/tmux"
 	"github.com/douhashi/soba/pkg/logging"
 )
@@ -92,15 +91,7 @@ func (r *DependencyResolver) ResolveClients(ctx context.Context) (*ResolvedClien
 	r.logger.Debug(ctx, "Initializing Tmux client")
 	clients.TmuxClient = tmux.NewClient()
 
-	// Slack Client (オプショナル)
-	if r.config.Slack.NotificationsEnabled && r.config.Slack.WebhookURL != "" {
-		r.logger.Info(ctx, "Initializing Slack client for notifications")
-		slackClient := slack.NewClient(r.config.Slack.WebhookURL, 10*time.Second)
-		slackLogger := r.logFactory.CreateComponentLogger("slack-notifier")
-		clients.SlackNotifier = slack.NewNotifier(slackClient, &r.config.Slack, slackLogger)
-	} else {
-		r.logger.Debug(ctx, "Slack notifications not configured")
-	}
+	// Slack notifications now handled by singleton SlackManager (initialized in app.go)
 
 	r.logger.Info(ctx, "Client dependencies resolved successfully")
 	return clients, nil
@@ -124,33 +115,11 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 
 	// Phase 2: Create workflow executor with nil processor (will be set later)
 	r.logger.Debug(ctx, "Creating workflow executor")
-	var workflowExecutor WorkflowExecutor
-	if clients.SlackNotifier != nil {
-		// Create workflow executor with Slack notifications if available
-		if factory, ok := serviceFactory.(DefaultServiceFactory); ok {
-			r.logger.Debug(ctx, "Creating workflow executor with Slack support")
-			workflowExecutor = factory.CreateWorkflowExecutorWithSlack(
-				clients.TmuxClient,
-				workspace,
-				nil, // Will be set later
-				clients.SlackNotifier,
-			)
-		} else {
-			r.logger.Debug(ctx, "Creating standard workflow executor")
-			workflowExecutor = serviceFactory.CreateWorkflowExecutor(
-				clients.TmuxClient,
-				workspace,
-				nil, // Will be set later
-			)
-		}
-	} else {
-		r.logger.Debug(ctx, "Creating workflow executor without Slack")
-		workflowExecutor = serviceFactory.CreateWorkflowExecutor(
-			clients.TmuxClient,
-			workspace,
-			nil, // Will be set later
-		)
-	}
+	workflowExecutor := serviceFactory.CreateWorkflowExecutor(
+		clients.TmuxClient,
+		workspace,
+		nil, // Will be set later
+	)
 	services.WorkflowExecutor = workflowExecutor
 
 	// Phase 3: Create issue processor
@@ -203,29 +172,10 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 	services.IssueWatcher.SetWorkflowExecutor(workflowExecutor)
 
 	r.logger.Debug(ctx, "Creating PR watcher")
-	if clients.SlackNotifier != nil && r.config.Slack.NotificationsEnabled {
-		// Create PR watcher with Slack notifications if available
-		if factory, ok := serviceFactory.(DefaultServiceFactory); ok {
-			r.logger.Debug(ctx, "Creating PR watcher with Slack support")
-			services.PRWatcher = factory.CreatePRWatcherWithSlack(
-				clients.GitHubClient,
-				r.config,
-				clients.SlackNotifier,
-			)
-		} else {
-			r.logger.Debug(ctx, "Creating standard PR watcher")
-			services.PRWatcher = serviceFactory.CreatePRWatcher(
-				clients.GitHubClient,
-				r.config,
-			)
-		}
-	} else {
-		r.logger.Debug(ctx, "Creating PR watcher without Slack")
-		services.PRWatcher = serviceFactory.CreatePRWatcher(
-			clients.GitHubClient,
-			r.config,
-		)
-	}
+	services.PRWatcher = serviceFactory.CreatePRWatcher(
+		clients.GitHubClient,
+		r.config,
+	)
 
 	// Phase 6: Create cleanup service
 	r.logger.Debug(ctx, "Creating cleanup service")

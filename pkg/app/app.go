@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/internal/infra/slack"
 	"github.com/douhashi/soba/pkg/logging"
 )
 
@@ -66,6 +67,10 @@ func MustInitializeWithOptions(configPath string, opts *InitOptions) {
 		panic("failed to create logger factory: " + err.Error())
 	}
 
+	// Initialize Slack Manager
+	logger := logFactory.CreateComponentLogger("slack")
+	slack.Initialize(cfg, logger)
+
 	initialized = true
 }
 
@@ -91,6 +96,10 @@ func MustInitializeForTest(testConfig *config.Config) {
 	if err != nil {
 		panic("failed to create logger factory: " + err.Error())
 	}
+
+	// Initialize Slack Manager for test
+	logger := logFactory.CreateComponentLogger("slack")
+	slack.Initialize(cfg, logger)
 
 	initialized = true
 }
@@ -148,6 +157,8 @@ func Reset() {
 	cfg = nil
 	logFactory = nil
 	initialized = false
+	// Reset Slack Manager singleton
+	slack.Reset()
 }
 
 // IsInitialized returns whether the app is initialized
