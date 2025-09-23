@@ -107,7 +107,7 @@ func (w *IssueWatcher) Start(ctx context.Context) error {
 
 // watchOnce は一度だけIssue監視を実行する
 func (w *IssueWatcher) watchOnce(ctx context.Context) error {
-	w.logger.Debug(ctx, "Starting watch cycle")
+	w.logger.Info(ctx, "Starting watch cycle")
 
 	issues, err := w.fetchFilteredIssues(ctx)
 	if err != nil {
@@ -141,6 +141,7 @@ func (w *IssueWatcher) watchOnce(ctx context.Context) error {
 	// 自動フェーズ遷移を処理（queue以外）
 	w.handleAutoTransitions(ctx, issues)
 
+	w.logger.Info(ctx, "Watch cycle completed")
 	return nil
 }
 

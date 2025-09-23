@@ -71,7 +71,7 @@ func (w *PRWatcher) Start(ctx context.Context) error {
 
 // watchOnce は一度だけPR監視を実行する
 func (w *PRWatcher) watchOnce(ctx context.Context) error {
-	w.logger.Debug(ctx, "Starting PR watch cycle")
+	w.logger.Info(ctx, "Starting PR watch cycle")
 
 	prs, err := w.fetchOpenPullRequests(ctx)
 	if err != nil {
@@ -99,6 +99,7 @@ func (w *PRWatcher) watchOnce(ctx context.Context) error {
 		}
 	}
 
+	w.logger.Info(ctx, "PR watch cycle completed")
 	return nil
 }
 

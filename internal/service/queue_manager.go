@@ -34,12 +34,14 @@ func (q *QueueManager) SetLogger(log logging.Logger) {
 
 // EnqueueNextIssue は次のIssueをキューに入れる
 func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Issue) error {
-	q.logger.Debug(ctx, "EnqueueNextIssue called",
+	q.logger.Info(ctx, "Starting queue management",
 		logging.Field{Key: "issue_count", Value: len(issues)})
 
 	// 1. アクティブなタスクがあるか確認
 	if q.hasActiveTask(issues) {
 		q.logger.Debug(ctx, "Active task exists, skipping enqueue")
+		q.logger.Info(ctx, "Queue management completed",
+			logging.Field{Key: "result", Value: "skipped_active_task"})
 		return nil
 	}
 
@@ -47,6 +49,8 @@ func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Iss
 	todoIssues := q.collectTodoIssues(issues)
 	if len(todoIssues) == 0 {
 		q.logger.Debug(ctx, "No todo issues found")
+		q.logger.Info(ctx, "Queue management completed",
+			logging.Field{Key: "result", Value: "no_todo_issues"})
 		return nil
 	}
 
@@ -55,7 +59,18 @@ func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Iss
 
 	// 4. ラベル変更（soba:todo → soba:queued）
 	q.logger.Info(ctx, "Enqueueing issue", logging.Field{Key: "issue", Value: targetIssue.Number})
-	return q.updateLabels(ctx, targetIssue.Number, "soba:todo", "soba:queued")
+	err := q.updateLabels(ctx, targetIssue.Number, "soba:todo", "soba:queued")
+	if err != nil {
+		q.logger.Info(ctx, "Queue management completed",
+			logging.Field{Key: "result", Value: "failed"},
+			logging.Field{Key: "error", Value: err.Error()})
+		return err
+	}
+
+	q.logger.Info(ctx, "Queue management completed",
+		logging.Field{Key: "result", Value: "enqueued"},
+		logging.Field{Key: "issue", Value: targetIssue.Number})
+	return nil
 }
 
 // hasActiveTask はアクティブなタスクがあるかチェック

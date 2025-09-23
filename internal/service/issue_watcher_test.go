@@ -8,6 +8,7 @@ import (
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/infra/github"
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestNewIssueWatcher(t *testing.T) {
@@ -469,5 +470,75 @@ func TestIssueWatcher_PhaseTransitionValidation(t *testing.T) {
 	isValid = watcher.isValidTransition(changes[0])
 	if isValid {
 		t.Error("expected transition from ready to planning to be invalid")
+	}
+}
+
+func TestIssueWatcher_WatchCycleLogs(t *testing.T) {
+	// Test that INFO log is output at the start of watchOnce and when completed
+	mockIssues := []github.Issue{
+		{
+			ID:     1,
+			Number: 1,
+			Title:  "Test Issue 1",
+			State:  "open",
+			Labels: []github.Label{
+				{Name: "soba:todo"},
+			},
+		},
+	}
+
+	client := &MockGitHubClient{
+		ListOpenIssuesFunc: func(ctx context.Context, owner, repo string, opts *github.ListIssuesOptions) ([]github.Issue, bool, error) {
+			return mockIssues, false, nil
+		},
+	}
+
+	cfg := &config.Config{
+		GitHub: config.GitHubConfig{
+			Repository: "test/repo",
+		},
+		Workflow: config.WorkflowConfig{
+			Interval: 1,
+		},
+	}
+
+	watcher := NewIssueWatcher(client, cfg)
+
+	// Set up mock logger
+	mockLogger := logging.NewMockLogger()
+	watcher.SetLogger(mockLogger)
+
+	ctx := context.Background()
+
+	// Execute watchOnce
+	err := watcher.watchOnce(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Check that "Starting watch cycle" log was changed from DEBUG to INFO
+	foundStartLog := false
+	for _, msg := range mockLogger.Messages {
+		if msg.Message == "Starting watch cycle" && msg.Level == "INFO" {
+			foundStartLog = true
+			break
+		}
+	}
+
+	if !foundStartLog {
+		t.Error("expected 'Starting watch cycle' INFO log, but not found")
+	}
+
+	// Check that "Watch cycle completed" INFO log was added
+	foundCompleteLog := false
+	for _, msg := range mockLogger.Messages {
+		if msg.Message == "Watch cycle completed" && msg.Level == "INFO" {
+			foundCompleteLog = true
+			break
+		}
+	}
+
+	if !foundCompleteLog {
+		t.Error("expected 'Watch cycle completed' INFO log, but not found")
 	}
 }
