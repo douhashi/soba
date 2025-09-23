@@ -213,3 +213,109 @@ func TestSlackManagerSingleton(t *testing.T) {
 
 	assert.Equal(t, manager1, manager2)
 }
+
+func TestSlackManagerWithEmptyRepository(t *testing.T) {
+	// Reset singleton for testing
+	Reset()
+
+	// Create temporary templates directory for testing
+	tempDir := t.TempDir()
+	templateDir := filepath.Join(tempDir, "templates", "slack")
+	err := os.MkdirAll(templateDir, 0755)
+	require.NoError(t, err)
+
+	// Create test templates including phase_start.json
+	testTemplates := map[string]string{
+		"phase_start.json": `{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Phase {{.Phase}} for {{.Repository}} #{{.IssueNumber}}"}}]}`,
+		"notify.json":      `{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "{{.Text}}"}}]}`,
+	}
+
+	for filename, content := range testTemplates {
+		writeErr := os.WriteFile(filepath.Join(templateDir, filename), []byte(content), 0644)
+		require.NoError(t, writeErr)
+	}
+
+	// Change working directory to temp dir for testing
+	oldDir, err := os.Getwd()
+	require.NoError(t, err)
+	defer os.Chdir(oldDir)
+	err = os.Chdir(tempDir)
+	require.NoError(t, err)
+
+	cfg := &config.Config{
+		Slack: config.SlackConfig{
+			NotificationsEnabled: true,
+			WebhookURL:           "https://hooks.slack.com/test",
+		},
+		GitHub: config.GitHubConfig{
+			Repository: "", // Empty repository
+		},
+	}
+
+	logger := logging.NewMockLogger()
+	Initialize(cfg, logger)
+
+	// Should fall back to NoOpManager when repository is empty
+	manager := GetManager()
+	assert.False(t, manager.IsEnabled())
+}
+
+func TestSlackManagerNotifyPhaseStartWithRepository(t *testing.T) {
+	// Reset singleton for testing
+	Reset()
+
+	// Create temporary templates directory for testing
+	tempDir := t.TempDir()
+	templateDir := filepath.Join(tempDir, "templates", "slack")
+	err := os.MkdirAll(templateDir, 0755)
+	require.NoError(t, err)
+
+	// Create test templates including phase_start.json
+	testTemplates := map[string]string{
+		"phase_start.json": `{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Phase {{.Phase}} for {{.Repository}} #{{.IssueNumber}}"}}]}`,
+		"notify.json":      `{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "{{.Text}}"}}]}`,
+	}
+
+	for filename, content := range testTemplates {
+		writeErr := os.WriteFile(filepath.Join(templateDir, filename), []byte(content), 0644)
+		require.NoError(t, writeErr)
+	}
+
+	// Change working directory to temp dir for testing
+	oldDir, err := os.Getwd()
+	require.NoError(t, err)
+	defer os.Chdir(oldDir)
+	err = os.Chdir(tempDir)
+	require.NoError(t, err)
+
+	cfg := &config.Config{
+		Slack: config.SlackConfig{
+			NotificationsEnabled: true,
+			WebhookURL:           "https://hooks.slack.com/test",
+		},
+		GitHub: config.GitHubConfig{
+			Repository: "douhashi/soba",
+		},
+	}
+
+	logger := logging.NewMockLogger()
+	Initialize(cfg, logger)
+
+	manager := GetManager()
+	assert.True(t, manager.IsEnabled())
+
+	// Type assert to SlackManager to test internal behavior
+	slackManager, ok := manager.(*SlackManager)
+	require.True(t, ok)
+
+	// Create mock client
+	mockClient := &MockSlackClient{}
+	slackManager.client = mockClient
+
+	// Test NotifyPhaseStart
+	slackManager.NotifyPhaseStart("implement", 123)
+
+	// Wait for async operation
+	// In real implementation, we might want to use channels or sync for testing
+	// For now, we'll just verify the method doesn't panic
+}
