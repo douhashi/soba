@@ -1,93 +1,98 @@
 ---
 allowed-tools: TodoWrite, TodoRead, Bash, Read, Grep, Glob
-description: "GitHub Issueの実装計画を策定"
+description: "Develop implementation plan for GitHub Issue"
 ---
 
-## 概要
+## Overview
 
-GitHub Issueに対する実装計画を策定し、Issueコメントとして投稿します。
-
----
-
-## 前提条件
-
-- ラベルは `soba:planning` の状態
+Develop implementation plan for GitHub Issue and post it as an Issue comment.
 
 ---
 
-## ルール
+## Prerequisites
 
-1. **コード修正は行わず、計画策定に専念**
-2. **TDDを前提とした計画設計**
-3. **既存アーキテクチャに従う**
-4. **実行可能な単位にステップ分割**
-5. **テンプレート形式で計画作成**
-6. **完了後ラベルを `soba:ready` に更新**
+- Label is in `soba:planning` state
 
 ---
 
-## 実行手順
+## Rules
 
-1. **Issue確認**
-   - `gh issue view <番号>` で内容確認
-   - `gh issue view <番号> --comments` でコメント確認
+1. **Focus on planning without code modification**
+2. **Design plan based on TDD premise**
+3. **Follow existing architecture**
+4. **Break down into executable step units**
+5. **Create plan in template format**
+6. **Update label to `soba:ready` after completion**
 
-2. **コードベース調査**
-   - 関連ファイル・過去実装を確認
-   - 影響範囲と依存関係を特定
+## Important Notes
 
-3. **技術選定**
-   - 使用ライブラリ・パターンを決定
-   - 選定理由を明確化
-
-4. **実装ステップ定義**
-   - テスト可能な単位に分割
-   - 関連ファイル・副作用を記載
-
-5. **テスト・リスク・スケジュール策定**
-   - テスト計画（単体・統合）
-   - リスクと対策
-   - 実装期間の見積もり
-
-6. **計画ファイル作成**
-   - `./.tmp/plan-[slug].md` に保存
-
-7. **コメント投稿**
-   - `gh issue comment <番号> --body-file ./.tmp/plan-[slug].md`
-
-8. **ラベル更新**
-   - `gh issue edit <番号> --remove-label "soba:planning" --add-label "soba:ready"`
+- Think hard and choose the best architecture with good maintainability. (You don't need to respect existing implementations too much)
+- Maintaining compatibility is not required (Code complexity due to maintaining backward compatibility is more harmful)
 
 ---
 
-## テンプレート
+## Execution Steps
+
+1. **Check Issue**
+   - Check content with `gh issue view <number>`
+   - Check comments with `gh issue view <number> --comments`
+
+2. **Investigate Codebase**
+   - Check related files and past implementations
+   - Identify impact scope and dependencies
+
+3. **Technology Selection**
+   - Decide on libraries and patterns to use
+   - Clarify selection reasons
+
+4. **Define Implementation Steps**
+   - Break down into testable units
+   - Document related files and side effects
+
+5. **Develop Test, Risk, and Schedule Plans**
+   - Test plan (unit and integration)
+   - Risks and countermeasures
+   - Implementation timeframe estimates
+
+6. **Create Plan File**
+   - Save to `./.tmp/plan-[slug].md`
+
+7. **Post Comment**
+   - `gh issue comment <number> --body-file ./.tmp/plan-[slug].md`
+
+8. **Update Label**
+   - `gh issue edit <number> --remove-label "soba:planning" --add-label "soba:ready"`
+
+---
+
+## Template
 
 ```markdown
-# 実装計画: [タイトル]
+# Implementation Plan: [Title]
 
-## 要件概要
-- [目的と背景]
-- [機能要件]
-- [受け入れ条件]
+## Requirements Overview
+- [Purpose and background]
+- [Functional requirements]
+- [Acceptance criteria]
 
-## 設計方針
-- [技術選定と理由]
-- [アーキテクチャ上の考慮点]
+## Design Policy
+- [Technology selection and reasons]
+- [Architectural considerations]
 
-## 実装ステップ
-1. [ステップ名]
-   - 作業内容: [詳細]
-   - 関連ファイル: [ファイルパス]
+## Implementation Steps
+1. [Step name]
+   - Work content: [Details]
+   - Related files: [File path]
 
-## テスト計画
-- 単体テスト: [対象とケース]
-- 統合テスト: [シナリオ]
+## Test Plan
+- Unit tests: [Target and cases]
+- Integration tests: [Scenarios]
 
-## リスクと対策
-- リスク: [内容]
-  対策: [方法]
+## Risks and Countermeasures
+- Risk: [Content]
+  Countermeasure: [Method]
 
-## スケジュール
-- 見積もり: 合計[X]時間
-- ステップ別: 各[Y]時間
+## Schedule
+- Estimate: Total [X] hours
+- By step: Each [Y] hours
 ```

@@ -1,91 +1,97 @@
 ---
 allowed-tools: TodoRead, TodoWrite, Bash, Read, Write, Edit, MultiEdit, Grep, Glob
-description: "TDDによる実装とPR作成"
+description: "TDD implementation and PR creation"
 ---
 
-## 概要
+## Overview
 
-実装計画に基づいてTDDで開発を進め、Pull Requestを作成します。
-
----
-
-## 前提条件
-
-- Issueコメントに実装計画が存在
-- ラベルは `soba:doing` の状態
+Proceed with TDD development based on implementation plan and create Pull Request.
 
 ---
 
-## ルール
+## Prerequisites
 
-1. **実装計画を必ず確認し従う**
-2. **TDD実践（テストファースト）**
-3. **既存設計・アーキテクチャを尊重**
-4. **実装完了後はPRを作成**
-5. **全テストのパスが必須条件**
+- Implementation plan exists in Issue comments
+- Label is in `soba:doing` state
 
 ---
 
-## 実行手順
+## Rules
 
-1. **Issue・計画確認**
-   - `gh issue view <番号>` で内容確認
-   - `gh issue view <番号> --comments` でコメント確認
+1. **Always check and follow the implementation plan**
+2. **Practice TDD (Test First)**
+3. **Respect existing design and architecture**
+4. **Create PR after implementation completion**
+5. **Passing all tests is a requirement**
 
-2. **テスト作成**
-   - 計画に基づくテストケース作成
+## Important Notes
+
+- Think hard and choose the best architecture with good maintainability. You don't need to respect existing implementations too much.
+- Maintaining compatibility is not required. Code complexity due to maintaining backward compatibility is more harmful.
+- Passing the full test suite is an **absolute requirement**. However, do not skip test code.
+
+---
+
+## Execution Steps
+
+1. **Check Issue and Plan**
+   - Check content with `gh issue view <number>`
+   - Check comments with `gh issue view <number> --comments`
+
+2. **Create Tests**
+   - Create test cases based on plan
    - Red → Green → Refactor
 
-3. **実装**
-   - 小さな単位でコミット
-   - 意味のあるコミットメッセージ
+3. **Implementation**
+   - Commit in small units
+   - Meaningful commit messages
 
-4. **テスト実行**
+4. **Run Tests**
    ```bash
-   # テスト実行（推奨）
+   # Run tests (recommended)
    make test
    ```
-   - 全体テスト実行（必須）
+   - Run full test suite (required)
 
-5. **PRテンプレート作成**
-   - `./.tmp/pull-request-<番号>.md` 作成
+5. **Create PR Template**
+   - Create `./.tmp/pull-request-<number>.md`
 
-6. **PR作成**
+6. **Create PR**
    ```bash
    gh pr create \
-     --title "feat: [機能名] (#<Issue番号>)" \
-     --body-file ./.tmp/pull-request-<番号>.md \
+     --title "feat: [feature name] (#<Issue number>)" \
+     --body-file ./.tmp/pull-request-<number>.md \
      --base main
    ```
 
-7. **Issueコメント**
-   - 「PR #<番号> を作成しました」
+7. **Issue Comment**
+   - "Created PR #<number>"
 
-8. **ラベル更新**
+8. **Update Labels**
    ```bash
-   gh issue edit <番号> \
+   gh issue edit <number> \
      --remove-label "soba:doing" \
      --add-label "soba:review-requested"
    ```
 
 ---
 
-## PRテンプレート
+## PR Template
 
 ```markdown
-## 実装完了
+## Implementation Complete
 
-fixes #<番号>
+fixes #<number>
 
-### 変更内容
-- [主要な変更点]
+### Changes
+- [Main changes]
 
-### テスト結果
-- 単体テスト: ✅ パス
-- 全体テスト: ✅ パス
+### Test Results
+- Unit tests: ✅ Pass
+- Full test suite: ✅ Pass
 
-### 確認事項
-- [ ] 実装計画に沿った実装
-- [ ] テストカバレッジ確保
-- [ ] 既存機能への影響なし
+### Checklist
+- [ ] Implementation follows the plan
+- [ ] Test coverage ensured
+- [ ] No impact on existing features
 ```

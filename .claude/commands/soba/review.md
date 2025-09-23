@@ -5,87 +5,87 @@ description: "Review a Pull Request for a soba Issue"
 
 # Review PR
 
-PRレビューを実施します。
+Conduct PR review.
 
 ## Context
 
-- Issue番号: $ARGUMENTS
+- Issue number: $ARGUMENTS
 
 ## Workflow
 
-### 1. Issue確認
+### 1. Check Issue
 
 ```bash
 GH_PAGER= gh issue view <issue-number>
 GH_PAGER= gh issue view <issue-number> --comments
 ```
 
-### 2. PR確認
+### 2. Check PR
 
 ```bash
 GH_PAGER= gh pr view <PR-number>
 GH_PAGER= gh pr view <PR-number> --json mergeable,mergeStateStatus
 ```
 
-### 3. コード変更確認
+### 3. Check Code Changes
 
 ```bash
 GH_PAGER= gh pr diff <PR-number>
 ```
 
-レビュー観点:
-- コーディング規約への準拠
-- テストの実装状況
-- セキュリティ上の懸念
-- 不要な差分の有無
+Review points:
+- Compliance with coding standards
+- Test implementation status
+- Security concerns
+- Presence of unnecessary diffs
 
-### 4. CI確認（必須・完了まで待機）
+### 4. Check CI (Required - wait for completion)
 
 ```bash
 gh pr checks <PR-number> --watch  # Timeout 600000
 ```
 
-⚠️ **重要**: CI完了前にレビュー結果を投稿しないこと
+⚠️ **Important**: Do not post review results before CI completion
 
-### 5. レビュー結果投稿
+### 5. Post Review Results
 
-`./.tmp/review-result-<issue-number>.md`を作成:
+Create `./.tmp/review-result-<issue-number>.md`:
 
 ```markdown
-## レビュー結果
+## Review Results
 
 - Issue: #<issue-number>
 - PR: #<PR-number>
 
-### ✅ 判定
-- [ ] 承認（LGTM）
-- [ ] 修正要求
+### ✅ Decision
+- [ ] Approve (LGTM)
+- [ ] Request changes
 
-### 🔄 マージ状態
-- [ ] コンフリクトなし
-- [ ] コンフリクトあり（要リベース）
+### 🔄 Merge Status
+- [ ] No conflicts
+- [ ] Conflicts exist (rebase required)
 
-### 👍 良い点
-- [実装の良い点]
+### 👍 Good Points
+- [Good aspects of implementation]
 
-### 🛠 改善提案
-- [具体的な改善点]
+### 🔧 Improvement Suggestions
+- [Specific improvement points]
 ```
 
-投稿:
+Post:
 ```bash
 gh pr comment <PR-number> --body "$(cat ./.tmp/review-result-<issue-number>.md)"
 ```
 
-### 6. ラベル更新
+### 6. Update Labels
 
-承認の場合:
+For approval:
 ```bash
 gh issue edit <issue-number> --remove-label "soba:reviewing" --add-label "soba:done"
 gh pr edit <PR-number> --add-label "soba:lgtm"
 ```
 
-修正要求の場合:
+For change requests:
 ```bash
 gh issue edit <issue-number> --remove-label "soba:reviewing" --add-label "soba:requires-changes"
 ```
