@@ -16,6 +16,8 @@ type GitHubClientInterface interface {
 	ListOpenIssues(ctx context.Context, owner, repo string, options *github.ListIssuesOptions) ([]github.Issue, bool, error)
 	AddLabelToIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error
 	RemoveLabelFromIssue(ctx context.Context, owner, repo string, issueNumber int, label string) error
+	UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error
+	GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]github.Label, error)
 	ListPullRequests(ctx context.Context, owner, repo string, opts *github.ListPullRequestsOptions) ([]github.PullRequest, bool, error)
 	GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, bool, error)
 	MergePullRequest(ctx context.Context, owner, repo string, number int, req *github.MergeRequest) (*github.MergeResponse, error)
@@ -183,7 +185,7 @@ func (p *issueProcessor) Configure(cfg *config.Config) error {
 	return nil
 }
 
-// UpdateLabels はIssueのラベルを更新する（削除→追加）
+// UpdateLabels はIssueのラベルを更新する（1回のAPIコールで実現）
 func (p *issueProcessor) UpdateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
 	log := logging.NewMockLogger()
 
@@ -205,77 +207,55 @@ func (p *issueProcessor) UpdateLabels(ctx context.Context, issueNumber int, remo
 		logging.Field{Key: "add", Value: addLabel},
 	)
 
-	// 古いラベルを削除（存在しない場合はスキップ）
-	if removeLabel != "" {
-		log.Debug(ctx, "Attempting to remove label",
+	// 現在のラベル一覧を取得
+	currentLabels, err := p.githubClient.GetIssueLabels(ctx, p.owner, p.repo, issueNumber)
+	if err != nil {
+		log.Error(ctx, "Failed to get current labels",
+			logging.Field{Key: "error", Value: err.Error()},
 			logging.Field{Key: "issue", Value: issueNumber},
-			logging.Field{Key: "label", Value: removeLabel},
 		)
+		return errors.WrapInternal(err, "failed to get current labels")
+	}
 
-		if err := p.githubClient.RemoveLabelFromIssue(ctx, p.owner, p.repo, issueNumber, removeLabel); err != nil {
-			// エラーメッセージを解析して、ラベルが存在しない場合は警告として扱う
-			errMsg := err.Error()
-			if strings.Contains(strings.ToLower(errMsg), "not found") ||
-				strings.Contains(strings.ToLower(errMsg), "404") ||
-				strings.Contains(strings.ToLower(errMsg), "label does not exist") {
-				log.Warn(ctx, "Label not found on issue, skipping removal",
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: removeLabel},
-				)
-				// ラベルが存在しない場合はエラーとせず、処理を続行
-			} else {
-				log.Error(ctx, "Failed to remove label",
-					logging.Field{Key: "error", Value: err.Error()},
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: removeLabel},
-				)
-				return errors.WrapInternal(err, "failed to remove label")
-			}
-		} else {
-			log.Info(ctx, "Successfully removed label from issue",
-				logging.Field{Key: "issue", Value: issueNumber},
-				logging.Field{Key: "label", Value: removeLabel},
-			)
+	// 新しいラベル配列を構築
+	newLabels := []string{}
+
+	// 削除対象ラベル以外の既存ラベルを保持
+	for _, label := range currentLabels {
+		if label.Name != removeLabel {
+			newLabels = append(newLabels, label.Name)
 		}
 	}
 
-	// 新しいラベルを追加
+	// 追加対象ラベルを追加（重複チェック付き）
 	if addLabel != "" {
-		log.Debug(ctx, "Attempting to add label",
-			logging.Field{Key: "issue", Value: issueNumber},
-			logging.Field{Key: "label", Value: addLabel},
-		)
-
-		if err := p.githubClient.AddLabelToIssue(ctx, p.owner, p.repo, issueNumber, addLabel); err != nil {
-			// エラーメッセージを解析して、既にラベルが存在する場合は警告として扱う
-			errMsg := err.Error()
-			if strings.Contains(strings.ToLower(errMsg), "already exists") ||
-				strings.Contains(strings.ToLower(errMsg), "label already added") {
-				log.Warn(ctx, "Label already exists on issue",
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: addLabel},
-				)
-				// 既にラベルが存在する場合もエラーとせず、成功として扱う
-			} else {
-				log.Error(ctx, "Failed to add label",
-					logging.Field{Key: "error", Value: err.Error()},
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: addLabel},
-				)
-				return errors.WrapInternal(err, "failed to add label")
+		labelExists := false
+		for _, labelName := range newLabels {
+			if labelName == addLabel {
+				labelExists = true
+				break
 			}
-		} else {
-			log.Info(ctx, "Successfully added label to issue",
-				logging.Field{Key: "issue", Value: issueNumber},
-				logging.Field{Key: "label", Value: addLabel},
-			)
 		}
+		if !labelExists {
+			newLabels = append(newLabels, addLabel)
+		}
+	}
+
+	// 1回のAPIコールでラベルを更新
+	if err := p.githubClient.UpdateIssueLabels(ctx, p.owner, p.repo, issueNumber, newLabels); err != nil {
+		log.Error(ctx, "Failed to update labels",
+			logging.Field{Key: "error", Value: err.Error()},
+			logging.Field{Key: "issue", Value: issueNumber},
+			logging.Field{Key: "labels", Value: newLabels},
+		)
+		return errors.WrapInternal(err, "failed to update labels")
 	}
 
 	log.Info(ctx, "Label update completed successfully",
 		logging.Field{Key: "issue", Value: issueNumber},
 		logging.Field{Key: "removed", Value: removeLabel},
 		logging.Field{Key: "added", Value: addLabel},
+		logging.Field{Key: "newLabels", Value: newLabels},
 	)
 
 	return nil

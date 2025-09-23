@@ -56,6 +56,19 @@ func (m *MockQueueGitHubClient) MergePullRequest(ctx context.Context, owner, rep
 	return nil, args.Error(1)
 }
 
+func (m *MockQueueGitHubClient) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
+	args := m.Called(ctx, owner, repo, issueNumber, labels)
+	return args.Error(0)
+}
+
+func (m *MockQueueGitHubClient) GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]github.Label, error) {
+	args := m.Called(ctx, owner, repo, issueNumber)
+	if args.Get(0) != nil {
+		return args.Get(0).([]github.Label), args.Error(1)
+	}
+	return []github.Label{}, args.Error(1)
+}
+
 func TestQueueManager_EnqueueNextIssue(t *testing.T) {
 	tests := []struct {
 		name          string

@@ -51,6 +51,14 @@ func (m *MockClient) ListLabels(ctx context.Context, owner, repo string) ([]Labe
 	return args.Get(0).([]Label), args.Error(1)
 }
 
+func (m *MockClient) GetIssueLabels(ctx context.Context, owner, repo string, issueNumber int) ([]Label, error) {
+	args := m.Called(ctx, owner, repo, issueNumber)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]Label), args.Error(1)
+}
+
 func (m *MockClient) UpdateIssueLabels(ctx context.Context, owner, repo string, issueNumber int, labels []string) error {
 	args := m.Called(ctx, owner, repo, issueNumber, labels)
 	return args.Error(0)
