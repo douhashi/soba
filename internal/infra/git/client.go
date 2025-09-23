@@ -205,14 +205,22 @@ func ParseRepositoryFromURL(url string) (owner, repo string, err error) {
 		return "", "", errors.New("invalid SSH URL format")
 	}
 
-	// Handle SSH URL with protocol: ssh://git@github.com:22/owner/repo
+	// Handle SSH URL with protocol: ssh://git@github.com:22/owner/repo or ssh://git@github.com/owner/repo
 	if strings.HasPrefix(url, "ssh://git@github.com") {
 		// Find the path after github.com
 		idx := strings.Index(url, "github.com")
 		if idx >= 0 {
 			remaining := url[idx+len("github.com"):]
-			// Remove port if present
-			if strings.HasPrefix(remaining, ":") {
+
+			// Check if it's directly followed by path (no port)
+			if strings.HasPrefix(remaining, "/") {
+				parts := strings.Split(strings.TrimPrefix(remaining, "/"), "/")
+				if len(parts) == 2 {
+					// Format: /owner/repo
+					return parts[0], parts[1], nil
+				}
+			} else if strings.HasPrefix(remaining, ":") {
+				// Remove port if present
 				parts := strings.Split(remaining, "/")
 				if len(parts) >= 3 {
 					// Format: :22/owner/repo
