@@ -61,7 +61,8 @@ graph TD
 
 ```bash
 # 最新リリースをダウンロード・インストール
-curl -L https://github.com/douhashi/osoba/releases/latest/download/soba_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/arm64/').tar.gz | tar xz -C /tmp && sudo mv /tmp/soba /usr/local/bin/
+mkdir -p ~/.local/bin
+curl -L https://github.com/douhashi/soba/releases/latest/download/soba_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/arm64/').tar.gz | tar xz -C /tmp && mv /tmp/soba ~/.local/bin/
 ```
 
 #### その他のインストール方法

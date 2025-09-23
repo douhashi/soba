@@ -61,7 +61,8 @@ Each phase is handled by Claude Code AI with full automation:
 
 ```bash
 # Download and install the latest release
-curl -L https://github.com/douhashi/osoba/releases/latest/download/soba_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/arm64/').tar.gz | tar xz -C /tmp && sudo mv /tmp/soba /usr/local/bin/
+mkdir -p ~/.local/bin
+curl -L https://github.com/douhashi/soba/releases/latest/download/soba_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/x86_64/; s/aarch64/arm64/').tar.gz | tar xz -C /tmp && mv /tmp/soba ~/.local/bin/
 ```
 
 #### Alternative Installation Methods
