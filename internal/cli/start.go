@@ -57,7 +57,7 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonServ
 		log.Info(ctx, "Starting Issue monitoring in daemon mode")
 
 		// Slack通知: デーモン開始
-		slack.NotifyPhaseStart("daemon-start", 0)
+		slack.Notify("🚀 Soba daemon started")
 
 		err := daemonService.StartDaemon(ctx, cfg)
 		if err == nil {
@@ -68,7 +68,7 @@ func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonServ
 		log.Info(ctx, "Starting Issue monitoring in foreground mode")
 
 		// Slack通知: フォアグラウンド開始
-		slack.NotifyPhaseStart("foreground-start", 0)
+		slack.Notify("🚀 Soba foreground service started")
 
 		err := daemonService.StartForeground(ctx, cfg)
 		if err == nil {

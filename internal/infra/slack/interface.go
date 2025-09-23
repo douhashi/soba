@@ -11,6 +11,9 @@ type Manager interface {
 	// NotifyError sends an error notification
 	NotifyError(title, errorMessage string)
 
+	// Notify sends a generic notification
+	Notify(text string)
+
 	// IsEnabled returns whether Slack notifications are enabled
 	IsEnabled() bool
 }
@@ -22,9 +25,11 @@ type NoOpManager struct{}
 func (n *NoOpManager) NotifyPhaseStart(phase string, issueNumber int) {}
 func (n *NoOpManager) NotifyPRMerged(prNumber, issueNumber int)       {}
 func (n *NoOpManager) NotifyError(title, errorMessage string)         {}
+func (n *NoOpManager) Notify(text string)                             {}
 func (n *NoOpManager) IsEnabled() bool                                { return false }
 
 // SlackClient interface for sending messages (moved from notifier.go)
 type SlackClient interface {
 	SendMessage(message string) error
+	SendBlockMessage(blockData []byte) error
 }

@@ -118,6 +118,86 @@ func TestClient_SendMessage_InvalidURL(t *testing.T) {
 	}
 }
 
+func TestClient_SendBlockMessage(t *testing.T) {
+	blockData := []byte(`{
+		"blocks": [
+			{
+				"type": "section",
+				"text": {
+					"type": "mrkdwn",
+					"text": "Test block message"
+				}
+			}
+		]
+	}`)
+
+	tests := []struct {
+		name           string
+		blockData      []byte
+		serverResponse int
+		serverBody     string
+		wantError      bool
+		errorContains  string
+	}{
+		{
+			name:           "正常なブロックメッセージ送信",
+			blockData:      blockData,
+			serverResponse: http.StatusOK,
+			serverBody:     "ok",
+			wantError:      false,
+		},
+		{
+			name:           "空のブロックデータ",
+			blockData:      []byte{},
+			serverResponse: http.StatusOK,
+			serverBody:     "ok",
+			wantError:      true,
+			errorContains:  "block data cannot be empty",
+		},
+		{
+			name:           "サーバーエラー",
+			blockData:      blockData,
+			serverResponse: http.StatusInternalServerError,
+			serverBody:     "server error",
+			wantError:      true,
+			errorContains:  "failed to send block message",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "POST" {
+					t.Errorf("Expected POST request, got %s", r.Method)
+				}
+
+				if r.Header.Get("Content-Type") != "application/json" {
+					t.Errorf("Expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
+				}
+
+				w.WriteHeader(tt.serverResponse)
+				w.Write([]byte(tt.serverBody))
+			}))
+			defer server.Close()
+
+			client := NewClient(server.URL, 5*time.Second)
+			err := client.SendBlockMessage(tt.blockData)
+
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("Expected error, got nil")
+				} else if !strings.Contains(err.Error(), tt.errorContains) {
+					t.Errorf("Expected error to contain '%s', got '%s'", tt.errorContains, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
 func TestNewClient(t *testing.T) {
 	webhookURL := "https://hooks.slack.com/services/T0J5GSMNH/B09G3KFHYSX/test"
 	timeout := 10 * time.Second

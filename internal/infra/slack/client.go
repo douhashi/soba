@@ -19,6 +19,10 @@ type SlackMessage struct {
 	Text string `json:"text"`
 }
 
+type SlackBlockMessage struct {
+	Blocks []interface{} `json:"blocks"`
+}
+
 func NewClient(webhookURL string, timeout time.Duration) *Client {
 	return &Client{
 		webhookURL: webhookURL,
@@ -61,6 +65,34 @@ func (c *Client) SendMessage(message string) error {
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("failed to send message: received status code %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (c *Client) SendBlockMessage(blockData []byte) error {
+	if len(blockData) == 0 {
+		return fmt.Errorf("block data cannot be empty")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.webhookURL, bytes.NewBuffer(blockData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send block message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("failed to send block message: received status code %d", resp.StatusCode)
 	}
 
 	return nil

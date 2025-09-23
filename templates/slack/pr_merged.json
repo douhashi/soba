@@ -1,0 +1,46 @@
+{
+    "blocks": [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "✅ PR #{{.PRNumber}} Merged",
+                "emoji": true
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*PR #{{.PRNumber}}* has been merged successfully.\nRelated to issue *#{{.IssueNumber}}*"
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "View PR",
+                        "emoji": true
+                    },
+                    "value": "view_pr_{{.PRNumber}}",
+                    "url": "{{.PRURL}}",
+                    "action_id": "view-pr-action"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "View Issue",
+                        "emoji": true
+                    },
+                    "value": "view_issue_{{.IssueNumber}}",
+                    "url": "{{.IssueURL}}",
+                    "action_id": "view-issue-action"
+                }
+            ]
+        }
+    ]
+}
