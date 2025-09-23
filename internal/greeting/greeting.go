@@ -10,10 +10,10 @@ func Hello(name string) string {
 	return fmt.Sprintf("Hello, %s!", name)
 }
 
-// JapaneseGreeting returns a greeting message in Japanese
+// JapaneseGreeting returns a greeting message (now in English for internationalization)
 func JapaneseGreeting(name string) string {
 	if name == "" {
-		name = "ゲスト"
+		name = "Guest"
 	}
-	return fmt.Sprintf("こんにちは、%sさん！", name)
+	return fmt.Sprintf("Hello, %s!", name)
 }

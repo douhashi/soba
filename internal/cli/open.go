@@ -28,13 +28,13 @@ func newOpenCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "open",
-		Short: "tmuxセッションを開く",
-		Long: `configから算出されるセッション名でtmuxセッションを開きます。
+		Short: "Open tmux session",
+		Long: `Opens a tmux session with the session name calculated from the configuration.
 
-既存のセッションが存在する場合はアタッチし、
-存在しない場合は新規作成してアタッチします。
+If an existing session exists, it attaches to it.
+If no session exists, it creates a new one and attaches to it.
 
-設定ファイルのgithub.repositoryからセッション名を自動算出します。`,
+The session name is automatically calculated from the github.repository setting in the configuration file.`,
 		RunE: o.runOpen,
 	}
 
@@ -46,13 +46,13 @@ func (o *openCmd) runOpen(cmd *cobra.Command, args []string) error {
 	sessionName := o.generateSessionName(repository)
 
 	if o.tmuxClient.SessionExists(sessionName) {
-		fmt.Printf("セッション '%s' にアタッチします\n", sessionName)
+		fmt.Printf("Attaching to session '%s'\n", sessionName)
 		return o.attachToSession(sessionName)
 	}
 
-	fmt.Printf("セッション '%s' を作成します\n", sessionName)
+	fmt.Printf("Creating session '%s'\n", sessionName)
 	if err := o.tmuxClient.CreateSession(sessionName); err != nil {
-		return fmt.Errorf("セッションの作成に失敗しました: %w", err)
+		return fmt.Errorf("Failed to create session: %w", err)
 	}
 
 	return o.attachToSession(sessionName)

@@ -11,17 +11,17 @@ func TestHello(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "挨拶（名前あり）",
+			name:     "Greeting with name",
 			input:    "World",
 			expected: "Hello, World!",
 		},
 		{
-			name:     "挨拶（空文字）",
+			name:     "Greeting with empty string",
 			input:    "",
 			expected: "Hello, Guest!",
 		},
 		{
-			name:     "挨拶（日本語）",
+			name:     "Greeting with Japanese characters",
 			input:    "世界",
 			expected: "Hello, 世界!",
 		},
@@ -44,14 +44,14 @@ func TestJapaneseGreeting(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "日本語挨拶（名前あり）",
-			input:    "太郎",
-			expected: "こんにちは、太郎さん！",
+			name:     "Japanese greeting with name",
+			input:    "Taro",
+			expected: "Hello, Taro!",
 		},
 		{
-			name:     "日本語挨拶（空文字）",
+			name:     "Japanese greeting with empty string",
 			input:    "",
-			expected: "こんにちは、ゲストさん！",
+			expected: "Hello, Guest!",
 		},
 	}
 
