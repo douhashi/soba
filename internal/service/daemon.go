@@ -232,8 +232,8 @@ func (d *daemonService) StartForeground(ctx context.Context, cfg *config.Config)
 	}
 
 	// ログ初期化後ログ出力を開始
-
 	if logPath != "" {
+		// 初期メッセージを出力してログファイルを確実に作成
 		d.logger.Info(ctx, "Starting Issue monitoring in foreground mode",
 			logging.Field{Key: "logFile", Value: logPath},
 		)
@@ -374,7 +374,13 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 		return err
 	}
 
-	// ログ初期化後ログ出力を開始
+	// ログ初期化後、初期メッセージを出力してログファイルを確実に作成
+	if logPath != "" {
+		d.logger.Info(ctx, "Starting daemon process",
+			logging.Field{Key: "logFile", Value: logPath},
+			logging.Field{Key: "pid", Value: os.Getpid()},
+		)
+	}
 
 	// tmuxセッションを初期化
 	if err := d.initializeTmuxSession(cfg); err != nil {

@@ -299,6 +299,45 @@ func TestRotatingFileWriter(t *testing.T) {
 		_, err = os.Stat(logFile)
 		assert.NoError(t, err)
 	})
+
+	t.Run("should create log file immediately without writing", func(t *testing.T) {
+		// Arrange
+		tempDir := t.TempDir()
+		logFile := filepath.Join(tempDir, "immediate.log")
+
+		// Act
+		writer, err := logging.NewRotatingFileWriter(logFile)
+
+		// Assert
+		require.NoError(t, err)
+		assert.NotNil(t, writer)
+
+		// File should be created immediately even without writing
+		_, err = os.Stat(logFile)
+		assert.NoError(t, err, "Log file should be created immediately")
+	})
+
+	t.Run("should create directory if not exists", func(t *testing.T) {
+		// Arrange
+		tempDir := t.TempDir()
+		logDir := filepath.Join(tempDir, "nested", "logs")
+		logFile := filepath.Join(logDir, "app.log")
+
+		// Act
+		writer, err := logging.NewRotatingFileWriter(logFile)
+
+		// Assert
+		require.NoError(t, err)
+		assert.NotNil(t, writer)
+
+		// Directory should be created
+		_, err = os.Stat(logDir)
+		assert.NoError(t, err, "Log directory should be created")
+
+		// File should be created
+		_, err = os.Stat(logFile)
+		assert.NoError(t, err, "Log file should be created")
+	})
 }
 
 func TestPrettyTextHandler(t *testing.T) {
