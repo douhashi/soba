@@ -23,10 +23,15 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository with remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
 		// Execute
 		cmd := newRootCmd()
@@ -50,6 +55,7 @@ func TestInitCommand(t *testing.T) {
 		assert.NotEmpty(t, content)
 		assert.Contains(t, string(content), "github:")
 		assert.Contains(t, string(content), "workflow:")
+		assert.Contains(t, string(content), "test-owner/test-repo")
 	})
 
 	t.Run("should not overwrite existing config file", func(t *testing.T) {
@@ -59,10 +65,15 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository with remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
 		// Create existing config file
 		sobaDir := filepath.Join(tempDir, ".soba")
@@ -104,10 +115,15 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository with remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
 		// Create directory with no write permission
 		sobaDir := filepath.Join(tempDir, ".soba")
@@ -136,10 +152,15 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository with remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
 		// Execute init command
 		cmd := newRootCmd()
@@ -162,7 +183,7 @@ func TestInitCommand(t *testing.T) {
 
 		// Verify some basic fields
 		assert.Equal(t, "gh", loadedConfig.GitHub.AuthMethod)
-		assert.Equal(t, "douhashi/soba-cli", loadedConfig.GitHub.Repository)
+		assert.Equal(t, "test-owner/test-repo", loadedConfig.GitHub.Repository)
 		assert.Equal(t, 20, loadedConfig.Workflow.Interval)
 		assert.True(t, loadedConfig.Workflow.UseTmux)
 		assert.Equal(t, ".git/soba/worktrees", loadedConfig.Git.WorktreeBasePath)
@@ -175,10 +196,15 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository with remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
 		// Mock GitHub client
 		mockClient := &MockGitHubClient{
@@ -192,30 +218,30 @@ func TestInitCommand(t *testing.T) {
 		// Assert
 		assert.NoError(t, err)
 
-		// Should have attempted to create labels for default repository
+		// Should have attempted to create labels for detected repository
 		assert.GreaterOrEqual(t, len(mockClient.ListLabelsCalls), 1, "Should call ListLabels at least once")
 
 		if len(mockClient.ListLabelsCalls) > 0 {
 			// Verify first call is to list existing labels
 			listCall := mockClient.ListLabelsCalls[0]
-			assert.Equal(t, "douhashi", listCall.Owner)
-			assert.Equal(t, "soba-cli", listCall.Repo)
+			assert.Equal(t, "test-owner", listCall.Owner)
+			assert.Equal(t, "test-repo", listCall.Repo)
 		}
 	})
 
-	t.Run("should skip label creation if no repository configured", func(t *testing.T) {
+	t.Run("should require git remote to be configured", func(t *testing.T) {
 		// Setup
 		tempDir := t.TempDir()
 		oldDir, _ := os.Getwd()
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository without remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
 
-		// Execute with no config file (should create default config)
+		// Execute init command
 		cmd := newRootCmd()
 		cmd.SetArgs([]string{"init"})
 
@@ -225,9 +251,9 @@ func TestInitCommand(t *testing.T) {
 
 		err = cmd.Execute()
 
-		// Assert - should succeed even without GitHub configuration
-		assert.NoError(t, err)
-		assert.Contains(t, buf.String(), "Successfully created config file")
+		// Assert - should fail without git remote
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "git remote")
 	})
 
 	t.Run("should handle GitHub API errors gracefully", func(t *testing.T) {
@@ -237,21 +263,89 @@ func TestInitCommand(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Initialize git repository
+		// Initialize git repository with remote
 		gitCmd := exec.Command("git", "init")
 		output, err := gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
 		// Mock GitHub client that returns errors
 		mockClient := &MockGitHubClient{
 			ListLabelsError: assert.AnError,
 		}
 
-		// Execute with mock client (this will create default config)
+		// Execute with mock client
 		err = runInitWithClient(context.Background(), []string{}, mockClient)
 
 		// Assert - should not fail completely, but log the error
 		assert.NoError(t, err, "Init should not fail due to GitHub API errors")
+	})
+
+	t.Run("should fail when no git remote is configured", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository without remote
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Execute
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
+
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+
+		err = cmd.Execute()
+
+		// Assert - should fail with clear error message
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "git remote")
+	})
+
+	t.Run("should use detected repository from git remote", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository with remote
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
+
+		// Execute
+		cmd := newRootCmd()
+		cmd.SetArgs([]string{"init"})
+
+		var buf bytes.Buffer
+		cmd.SetOut(&buf)
+		cmd.SetErr(&buf)
+
+		err = cmd.Execute()
+		require.NoError(t, err)
+
+		// Verify config file has correct repository
+		configPath := filepath.Join(tempDir, ".soba", "config.yml")
+		content, err := os.ReadFile(configPath)
+		require.NoError(t, err)
+		assert.Contains(t, string(content), "test-owner/test-repo")
+		assert.NotContains(t, string(content), "douhashi/soba-cli")
 	})
 }
 
