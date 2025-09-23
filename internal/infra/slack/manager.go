@@ -17,9 +17,11 @@ var (
 
 // SlackManager implements Manager interface
 type SlackManager struct {
-	client SlackClient
-	config config.SlackConfig
-	logger logging.Logger
+	client          SlackClient
+	config          config.SlackConfig
+	githubConfig    config.GitHubConfig
+	logger          logging.Logger
+	templateManager TemplateManager
 }
 
 // Initialize initializes the global Slack manager based on config
@@ -35,12 +37,25 @@ func Initialize(cfg *config.Config, logger logging.Logger) {
 		// Use default timeout of 30 seconds
 		timeout := 30 * time.Second
 		client := NewClient(cfg.Slack.WebhookURL, timeout)
-		instance = &SlackManager{
-			client: client,
-			config: cfg.Slack,
-			logger: logger,
+
+		// Initialize template manager
+		templateManager := NewTemplateManager(logger)
+		if err := templateManager.LoadTemplates(); err != nil {
+			logger.Warn(context.Background(), "Failed to load Slack templates, falling back to NoOp manager",
+				logging.Field{Key: "error", Value: err.Error()},
+			)
+			instance = &NoOpManager{}
+			return
 		}
-		logger.Info(context.Background(), "Slack notifications enabled")
+
+		instance = &SlackManager{
+			client:          client,
+			config:          cfg.Slack,
+			githubConfig:    cfg.GitHub,
+			logger:          logger,
+			templateManager: templateManager,
+		}
+		logger.Info(context.Background(), "Slack notifications enabled with block templates")
 	})
 }
 
@@ -59,39 +74,101 @@ func Reset() {
 	once = sync.Once{}
 }
 
+// Template data structures
+type NotifyData struct {
+	Text string
+}
+
+type PhaseStartData struct {
+	Phase       string
+	IssueNumber int
+	IssueURL    string
+	Repository  string
+}
+
+type PRMergedData struct {
+	PRNumber    int
+	IssueNumber int
+	PRURL       string
+	IssueURL    string
+}
+
+type ErrorData struct {
+	Title        string
+	ErrorMessage string
+}
+
+// Helper methods for URL building
+func (s *SlackManager) buildIssueURL(issueNumber int) string {
+	return fmt.Sprintf("https://github.com/%s/issues/%d", s.githubConfig.Repository, issueNumber)
+}
+
+func (s *SlackManager) buildPRURL(prNumber int) string {
+	return fmt.Sprintf("https://github.com/%s/pull/%d", s.githubConfig.Repository, prNumber)
+}
+
+func (s *SlackManager) sendBlockMessage(templateName string, data interface{}) {
+	go func() {
+		blockData, err := s.templateManager.RenderTemplate(templateName, data)
+		if err != nil {
+			s.logger.Warn(context.Background(), "Failed to render Slack template",
+				logging.Field{Key: "template", Value: templateName},
+				logging.Field{Key: "error", Value: err.Error()},
+			)
+			return
+		}
+
+		if err := s.client.SendBlockMessage(blockData); err != nil {
+			s.logger.Warn(context.Background(), "Failed to send Slack block notification",
+				logging.Field{Key: "template", Value: templateName},
+				logging.Field{Key: "error", Value: err.Error()},
+			)
+		} else {
+			s.logger.Debug(context.Background(), "Slack block notification sent successfully",
+				logging.Field{Key: "template", Value: templateName},
+			)
+		}
+	}()
+}
+
 // Implementation methods
 func (s *SlackManager) NotifyPhaseStart(phase string, issueNumber int) {
-	message := fmt.Sprintf("🚀 フェーズ開始: %s\nIssue #%d", phase, issueNumber)
-	s.sendAsync(message)
+	data := PhaseStartData{
+		Phase:       phase,
+		IssueNumber: issueNumber,
+		IssueURL:    s.buildIssueURL(issueNumber),
+		Repository:  s.githubConfig.Repository,
+	}
+	s.sendBlockMessage("phase_start", data)
 }
 
 func (s *SlackManager) NotifyPRMerged(prNumber, issueNumber int) {
-	message := fmt.Sprintf("✅ PR マージ完了\nPR #%d (Issue #%d)", prNumber, issueNumber)
-	s.sendAsync(message)
+	data := PRMergedData{
+		PRNumber:    prNumber,
+		IssueNumber: issueNumber,
+		PRURL:       s.buildPRURL(prNumber),
+		IssueURL:    s.buildIssueURL(issueNumber),
+	}
+	s.sendBlockMessage("pr_merged", data)
 }
 
 func (s *SlackManager) NotifyError(title, errorMessage string) {
-	message := fmt.Sprintf("❌ エラー: %s\n%s", title, errorMessage)
-	s.sendAsync(message)
+	data := ErrorData{
+		Title:        title,
+		ErrorMessage: errorMessage,
+	}
+	s.sendBlockMessage("error", data)
+}
+
+func (s *SlackManager) Notify(text string) {
+	data := NotifyData{
+		Text: text,
+	}
+	s.sendBlockMessage("notify", data)
 }
 
 func (s *SlackManager) IsEnabled() bool {
 	return true
-}
-
-func (s *SlackManager) sendAsync(message string) {
-	go func() {
-		if err := s.client.SendMessage(message); err != nil {
-			s.logger.Warn(context.Background(), "Failed to send Slack notification",
-				logging.Field{Key: "error", Value: err.Error()},
-				logging.Field{Key: "message", Value: message},
-			)
-		} else {
-			s.logger.Debug(context.Background(), "Slack notification sent successfully",
-				logging.Field{Key: "message", Value: message},
-			)
-		}
-	}()
 }
 
 // Package-level convenience functions
@@ -105,6 +182,10 @@ func NotifyPRMerged(prNumber, issueNumber int) {
 
 func NotifyError(title, errorMessage string) {
 	GetManager().NotifyError(title, errorMessage)
+}
+
+func Notify(text string) {
+	GetManager().Notify(text)
 }
 
 func IsEnabled() bool {

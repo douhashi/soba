@@ -1,0 +1,28 @@
+{
+    "blocks": [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "❌ Error: {{.Title}}",
+                "emoji": true
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*Error Details:*\n```{{.ErrorMessage}}```"
+            }
+        },
+        {
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "⚠️ This error requires attention"
+                }
+            ]
+        }
+    ]
+}

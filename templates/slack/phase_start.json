@@ -1,0 +1,30 @@
+{
+    "blocks": [
+        {
+            "type": "header",
+            "text": {
+                "type": "plain_text",
+                "text": "Phase: {{.Phase}} #{{.IssueNumber}}",
+                "emoji": true
+            }
+        },
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*{{.Phase}}* phase started for *{{.Repository}}* *#{{.IssueNumber}}*"
+            },
+            "accessory": {
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Open Issue",
+                    "emoji": true
+                },
+                "value": "open_issue_button_{{.IssueNumber}}",
+                "url": "{{.IssueURL}}",
+                "action_id": "button-action"
+            }
+        }
+    ]
+}
