@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,74 +225,16 @@ func copyClaudeCommandTemplates() error {
 		return err
 	}
 
-	// Define source and target directories
-	sourceDir := filepath.Join(currentDir, "templates", "claude", "commands", "soba")
+	// Define target directory
 	targetDir := filepath.Join(currentDir, ".claude", "commands", "soba")
 
-	// Check if source directory exists
-	if _, statErr := os.Stat(sourceDir); os.IsNotExist(statErr) {
-		// Source directory doesn't exist, skip silently
-		return nil
-	}
+	// Get the ClaudeCommandsManager
+	manager := config.GetClaudeCommandsManager()
 
-	// Create target directory if it doesn't exist
-	if mkdirErr := os.MkdirAll(targetDir, 0755); mkdirErr != nil {
-		return mkdirErr
-	}
-
-	// Read source directory
-	entries, err := os.ReadDir(sourceDir)
-	if err != nil {
-		return err
-	}
-
-	// Copy each file
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		sourcePath := filepath.Join(sourceDir, entry.Name())
-		targetPath := filepath.Join(targetDir, entry.Name())
-
-		// Check if target file already exists
-		if _, statErr := os.Stat(targetPath); statErr == nil {
-			// File already exists, skip
-			continue
-		}
-
-		// Copy file
-		if copyErr := copyFile(sourcePath, targetPath); copyErr != nil {
-			// Log error but continue with other files
-			continue
-		}
+	// Copy templates using the manager
+	if err := manager.CopyTemplates(targetDir); err != nil {
+		return fmt.Errorf("failed to copy Claude command templates: %w", err)
 	}
 
 	return nil
-}
-
-// copyFile copies a file from source to destination
-func copyFile(src, dst string) error {
-	// Open source file
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	// Create destination file
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	// Copy content
-	_, err = io.Copy(destFile, sourceFile)
-	if err != nil {
-		return err
-	}
-
-	// Sync to ensure data is written
-	return destFile.Sync()
 }

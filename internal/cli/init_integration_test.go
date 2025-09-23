@@ -82,23 +82,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
-		// Create template files
-		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
-		require.NoError(t, os.MkdirAll(templateDir, 0755))
-
-		templateFiles := map[string]string{
-			"plan.md":      "# Plan template content",
-			"implement.md": "# Implement template content",
-			"review.md":    "# Review template content",
-			"revise.md":    "# Revise template content",
-		}
-
-		for filename, content := range templateFiles {
-			filePath := filepath.Join(templateDir, filename)
-			require.NoError(t, os.WriteFile(filePath, []byte(content), 0644))
-		}
-
-		// Execute init
+		// Execute init (templates are now embedded)
 		err = runInitWithClient(context.Background(), []string{}, nil)
 		require.NoError(t, err)
 
@@ -106,15 +90,18 @@ func TestInitWithGitRepository(t *testing.T) {
 		configPath := filepath.Join(tempDir, ".soba", "config.yml")
 		assert.FileExists(t, configPath)
 
-		// Verify Claude command templates were copied
+		// Verify Claude command templates were copied from embedded files
 		claudeDir := filepath.Join(tempDir, ".claude", "commands", "soba")
-		for filename, expectedContent := range templateFiles {
+		expectedFiles := []string{"plan.md", "implement.md", "review.md", "revise.md"}
+
+		for _, filename := range expectedFiles {
 			targetPath := filepath.Join(claudeDir, filename)
 			assert.FileExists(t, targetPath)
 
+			// Verify file has content (not checking exact content since it's embedded)
 			content, err := os.ReadFile(targetPath)
 			require.NoError(t, err)
-			assert.Equal(t, expectedContent, string(content))
+			assert.NotEmpty(t, content)
 		}
 	})
 
@@ -144,11 +131,6 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
-		// Create template files
-		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
-		require.NoError(t, os.MkdirAll(templateDir, 0755))
-		require.NoError(t, os.WriteFile(filepath.Join(templateDir, "plan.md"), []byte("# New template content"), 0644))
-
 		// Create existing Claude command template
 		claudeDir := filepath.Join(tempDir, ".claude", "commands", "soba")
 		require.NoError(t, os.MkdirAll(claudeDir, 0755))
@@ -156,7 +138,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		existingFile := filepath.Join(claudeDir, "plan.md")
 		require.NoError(t, os.WriteFile(existingFile, existingContent, 0644))
 
-		// Execute init
+		// Execute init (templates are now embedded)
 		err = runInitWithClient(context.Background(), []string{}, nil)
 		require.NoError(t, err)
 
@@ -164,6 +146,13 @@ func TestInitWithGitRepository(t *testing.T) {
 		content, err := os.ReadFile(existingFile)
 		require.NoError(t, err)
 		assert.Equal(t, existingContent, content)
+
+		// Verify other embedded files were created
+		otherFiles := []string{"implement.md", "review.md", "revise.md"}
+		for _, filename := range otherFiles {
+			targetPath := filepath.Join(claudeDir, filename)
+			assert.FileExists(t, targetPath)
+		}
 	})
 
 	t.Run("should detect repository from SSH git remote", func(t *testing.T) {
