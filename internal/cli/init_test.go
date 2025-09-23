@@ -402,25 +402,9 @@ func (m *MockGitHubClient) ListLabels(ctx context.Context, owner, repo string) (
 }
 
 func TestCopyClaudeCommandTemplates(t *testing.T) {
-	t.Run("should copy template files to target directory", func(t *testing.T) {
+	t.Run("should copy embedded template files to target directory", func(t *testing.T) {
 		// Setup
 		tempDir := t.TempDir()
-
-		// Create template source directory and files
-		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
-		require.NoError(t, os.MkdirAll(templateDir, 0755))
-
-		templateFiles := map[string]string{
-			"plan.md":      "# Plan template",
-			"implement.md": "# Implement template",
-			"review.md":    "# Review template",
-			"revise.md":    "# Revise template",
-		}
-
-		for filename, content := range templateFiles {
-			filepath := filepath.Join(templateDir, filename)
-			require.NoError(t, os.WriteFile(filepath, []byte(content), 0644))
-		}
 
 		// Set current directory to temp dir for relative path resolution
 		oldDir, _ := os.Getwd()
@@ -435,25 +419,22 @@ func TestCopyClaudeCommandTemplates(t *testing.T) {
 
 		// Verify files are copied to target location
 		targetDir := filepath.Join(tempDir, ".claude", "commands", "soba")
-		for filename, expectedContent := range templateFiles {
+		expectedFiles := []string{"plan.md", "implement.md", "review.md", "revise.md"}
+
+		for _, filename := range expectedFiles {
 			targetPath := filepath.Join(targetDir, filename)
 			assert.FileExists(t, targetPath)
 
+			// Verify file has content
 			content, err := os.ReadFile(targetPath)
 			require.NoError(t, err)
-			assert.Equal(t, expectedContent, string(content))
+			assert.NotEmpty(t, content)
 		}
 	})
 
 	t.Run("should not overwrite existing files", func(t *testing.T) {
 		// Setup
 		tempDir := t.TempDir()
-
-		// Create template source directory and files
-		templateDir := filepath.Join(tempDir, "templates", "claude", "commands", "soba")
-		require.NoError(t, os.MkdirAll(templateDir, 0755))
-
-		require.NoError(t, os.WriteFile(filepath.Join(templateDir, "plan.md"), []byte("# New plan template"), 0644))
 
 		// Create target directory with existing file
 		targetDir := filepath.Join(tempDir, ".claude", "commands", "soba")
@@ -478,13 +459,20 @@ func TestCopyClaudeCommandTemplates(t *testing.T) {
 		content, err := os.ReadFile(existingFile)
 		require.NoError(t, err)
 		assert.Equal(t, existingContent, content)
+
+		// Verify other files are created
+		otherFiles := []string{"implement.md", "review.md", "revise.md"}
+		for _, filename := range otherFiles {
+			targetPath := filepath.Join(targetDir, filename)
+			assert.FileExists(t, targetPath)
+		}
 	})
 
-	t.Run("should handle missing template directory gracefully", func(t *testing.T) {
+	t.Run("should always create target directory with embedded files", func(t *testing.T) {
 		// Setup
 		tempDir := t.TempDir()
 
-		// Set current directory to temp dir (no templates directory exists)
+		// Set current directory to temp dir
 		oldDir, _ := os.Getwd()
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
@@ -492,13 +480,19 @@ func TestCopyClaudeCommandTemplates(t *testing.T) {
 		// Execute
 		err := copyClaudeCommandTemplates()
 
-		// Assert - should not fail, just skip copying
+		// Assert
 		assert.NoError(t, err)
 
-		// Verify no target directory is created
+		// Verify target directory is created with embedded files
 		targetDir := filepath.Join(tempDir, ".claude", "commands", "soba")
-		_, err = os.Stat(targetDir)
-		assert.True(t, os.IsNotExist(err))
+		assert.DirExists(t, targetDir)
+
+		// Verify all embedded files are created
+		expectedFiles := []string{"plan.md", "implement.md", "review.md", "revise.md"}
+		for _, filename := range expectedFiles {
+			targetPath := filepath.Join(targetDir, filename)
+			assert.FileExists(t, targetPath)
+		}
 	})
 
 	t.Run("should handle file copy errors gracefully", func(t *testing.T) {
