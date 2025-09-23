@@ -128,6 +128,20 @@ func TestClient_ParseRepositoryFromURL(t *testing.T) {
 			wantErr:   false,
 		},
 		{
+			name:      "SSH URL without port with .git",
+			url:       "ssh://git@github.com/owner/repo.git",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
+			name:      "SSH URL without port without .git",
+			url:       "ssh://git@github.com/owner/repo",
+			wantOwner: "owner",
+			wantRepo:  "repo",
+			wantErr:   false,
+		},
+		{
 			name:      "Invalid URL format",
 			url:       "not-a-valid-url",
 			wantOwner: "",
@@ -190,6 +204,15 @@ func TestClient_GetRepository(t *testing.T) {
 				runCommand(t, tmpDir, "git", "remote", "add", "origin", "git@github.com:douhashi/soba-cli.git")
 			},
 			wantRepo: "douhashi/soba-cli",
+			wantErr:  false,
+		},
+		{
+			name: "Get repository from SSH URL without port",
+			setupFunc: func(t *testing.T, tmpDir string) {
+				runCommand(t, tmpDir, "git", "init")
+				runCommand(t, tmpDir, "git", "remote", "add", "origin", "ssh://git@github.com/douhashi/soba.git")
+			},
+			wantRepo: "douhashi/soba",
 			wantErr:  false,
 		},
 		{
