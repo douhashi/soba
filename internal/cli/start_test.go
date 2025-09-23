@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -11,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/pkg/app"
 )
 
 func TestNewStartCmd(t *testing.T) {
@@ -26,6 +29,22 @@ func TestNewStartCmd(t *testing.T) {
 }
 
 func TestRunStart_ForegroundMode(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	testConfig := &config.Config{
+		GitHub: config.GitHubConfig{
+			Token:      "test-token",
+			Repository: "test/repo",
+		},
+		Workflow: config.WorkflowConfig{
+			Interval: 30,
+		},
+		Log: config.LogConfig{
+			Level: "warn",
+		},
+	}
+	helper.InitializeForTestWithConfig(testConfig)
+
 	// テスト用一時ディレクトリ作成
 	tmpDir := t.TempDir()
 	sobaDir := filepath.Join(tmpDir, ".soba")
@@ -62,6 +81,22 @@ workflow:
 }
 
 func TestRunStart_DaemonMode(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	testConfig := &config.Config{
+		GitHub: config.GitHubConfig{
+			Token:      "test-token",
+			Repository: "test/repo",
+		},
+		Workflow: config.WorkflowConfig{
+			Interval: 30,
+		},
+		Log: config.LogConfig{
+			Level: "warn",
+		},
+	}
+	helper.InitializeForTestWithConfig(testConfig)
+
 	// テスト用一時ディレクトリ作成
 	tmpDir := t.TempDir()
 	sobaDir := filepath.Join(tmpDir, ".soba")
@@ -98,7 +133,7 @@ workflow:
 }
 
 func TestRunStart_ConfigNotFound(t *testing.T) {
-	// 設定ファイルが存在しない一時ディレクトリ
+	// テスト用一時ディレクトリを作成し、設定ファイルがない状態にする
 	tmpDir := t.TempDir()
 
 	// 現在のディレクトリを一時的に変更
@@ -109,13 +144,21 @@ func TestRunStart_ConfigNotFound(t *testing.T) {
 		require.NoError(t, os.Chdir(originalDir))
 	}()
 
-	// モックサービス
-	mockService := &MockDaemonServiceImpl{}
+	// rootコマンドを作成してstartコマンドを追加
+	rootCmd := newRootCmd()
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"start"})
 
-	cmd := &cobra.Command{}
-	err = runStartWithService(cmd, []string{}, false, mockService)
+	// 設定ファイルがない状態でコマンドを実行
+	// initializeApp()が失敗することを期待
+	err = rootCmd.Execute()
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "config")
+	// The error should be about config file not found
+	errMsg := err.Error()
+	assert.True(t, strings.Contains(errMsg, "config") || strings.Contains(errMsg, "no such file"),
+		"Expected config-related error, got: %s", errMsg)
 }
 
 // MockDaemonServiceImpl はテスト用のモックサービス
@@ -159,6 +202,9 @@ func TestRunStart_LogFileCreation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Initialize app for testing
+			helper := app.NewTestHelper(t)
+
 			// テスト用一時ディレクトリ作成
 			tmpDir := t.TempDir()
 			sobaDir := filepath.Join(tmpDir, ".soba")
@@ -184,6 +230,23 @@ log:
 			defer func() {
 				require.NoError(t, os.Chdir(originalDir))
 			}()
+
+			// Initialize app with the test config
+			testConfig := &config.Config{
+				GitHub: config.GitHubConfig{
+					Token:      "test-token",
+					Repository: "test/repo",
+				},
+				Workflow: config.WorkflowConfig{
+					Interval: 30,
+				},
+				Log: config.LogConfig{
+					OutputPath:     ".soba/logs/soba-${PID}.log",
+					RetentionCount: 5,
+					Level:          "warn",
+				},
+			}
+			helper.InitializeForTestWithConfig(testConfig)
 
 			// モックサービスでログディレクトリが作成されることを確認
 			mockService := &MockDaemonServiceImpl{

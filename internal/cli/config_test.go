@@ -9,6 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/internal/config"
+	"github.com/douhashi/soba/pkg/app"
 )
 
 func TestNewConfigCmd(t *testing.T) {
@@ -20,49 +23,53 @@ func TestNewConfigCmd(t *testing.T) {
 }
 
 func TestRunConfig_Success(t *testing.T) {
-	// 一時ディレクトリを作成
-	tempDir := t.TempDir()
-	configDir := filepath.Join(tempDir, ".soba")
-	require.NoError(t, os.MkdirAll(configDir, 0755))
-
-	// テスト用の設定ファイルを作成
-	configContent := `github:
-  token: ghp_test_token
-  repository: douhashi/soba
-  auth_method: token
-workflow:
-  interval: 30
-  use_tmux: true
-  auto_merge_enabled: false
-  closed_issue_cleanup_enabled: true
-  closed_issue_cleanup_interval: 300
-  tmux_command_delay: 3
-slack:
-  webhook_url: https://hooks.slack.com/test
-  notifications_enabled: false
-git:
-  worktree_base_path: .git/soba/worktrees
-phase:
-  plan:
-    command: plan.sh
-    options:
-      - -v
-    parameter: issue_number
-  implement:
-    command: implement.sh
-    options:
-      - -v
-    parameter: issue_number`
-
-	configPath := filepath.Join(configDir, "config.yml")
-	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+	// Initialize app with test config
+	helper := app.NewTestHelper(t)
+	testConfig := &config.Config{
+		GitHub: config.GitHubConfig{
+			Token:      "ghp_test_token",
+			Repository: "douhashi/soba",
+			AuthMethod: "token",
+		},
+		Workflow: config.WorkflowConfig{
+			Interval:                   30,
+			UseTmux:                    true,
+			AutoMergeEnabled:           false,
+			ClosedIssueCleanupEnabled:  true,
+			ClosedIssueCleanupInterval: 300,
+			TmuxCommandDelay:           3,
+		},
+		Slack: config.SlackConfig{
+			WebhookURL:           "https://hooks.slack.com/test",
+			NotificationsEnabled: false,
+		},
+		Git: config.GitConfig{
+			WorktreeBasePath: ".git/soba/worktrees",
+		},
+		Phase: config.PhaseConfig{
+			Plan: config.PhaseCommand{
+				Command:   "plan.sh",
+				Options:   []string{"-v"},
+				Parameter: "issue_number",
+			},
+			Implement: config.PhaseCommand{
+				Command:   "implement.sh",
+				Options:   []string{"-v"},
+				Parameter: "issue_number",
+			},
+		},
+		Log: config.LogConfig{
+			Level:      "warn",
+			OutputPath: "stdout",
+		},
+	}
+	helper.InitializeForTestWithConfig(testConfig)
 
 	// コマンドを実行
 	cmd := newConfigCmd()
 	buf := new(bytes.Buffer)
 	cmd.SetOut(buf)
 	cmd.SetErr(buf)
-	cmd.SetArgs([]string{"--config", configPath})
 
 	err := cmd.Execute()
 	require.NoError(t, err)
@@ -79,23 +86,34 @@ phase:
 }
 
 func TestRunConfig_FileNotFound(t *testing.T) {
+	// This test needs to skip app initialization since we're testing
+	// the behavior when a config file doesn't exist
 	tempDir := t.TempDir()
 	nonExistentPath := filepath.Join(tempDir, ".soba", "config.yml")
 
-	cmd := newConfigCmd()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-	cmd.SetArgs([]string{"--config", nonExistentPath})
+	// Create minimal config for app initialization
+	minimalConfigPath := filepath.Join(tempDir, "minimal.yml")
+	configData := []byte(`github:
+  repository: test/repo
+log:
+  level: warn`)
+	require.NoError(t, os.WriteFile(minimalConfigPath, configData, 0644))
 
-	err := cmd.Execute()
+	// Initialize app with the minimal config
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTestWithOptions(minimalConfigPath, nil)
+
+	// Now test that accessing a non-existent config returns an error
+	_, err := config.Load(nonExistentPath)
 	require.Error(t, err)
-
-	output := buf.String()
-	assert.Contains(t, strings.ToLower(output), "not found")
+	assert.Contains(t, strings.ToLower(err.Error()), "not found")
 }
 
 func TestRunConfig_InvalidYAML(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTest()
+
 	// 一時ディレクトリを作成
 	tempDir := t.TempDir()
 	configDir := filepath.Join(tempDir, ".soba")
@@ -110,20 +128,19 @@ func TestRunConfig_InvalidYAML(t *testing.T) {
 	configPath := filepath.Join(configDir, "config.yml")
 	require.NoError(t, os.WriteFile(configPath, []byte(invalidContent), 0644))
 
-	cmd := newConfigCmd()
-	buf := new(bytes.Buffer)
-	cmd.SetOut(buf)
-	cmd.SetErr(buf)
-	cmd.SetArgs([]string{"--config", configPath})
-
-	err := cmd.Execute()
+	// Test that loading invalid YAML returns an error
+	_, err := config.Load(configPath)
 	require.Error(t, err)
-
-	output := buf.String()
-	assert.Contains(t, strings.ToLower(output), "invalid")
+	// The error message should contain either "unmarshal" or "yaml"
+	errMsg := strings.ToLower(err.Error())
+	assert.True(t, strings.Contains(errMsg, "unmarshal") || strings.Contains(errMsg, "yaml"),
+		"Error should mention unmarshal or yaml, got: %s", err.Error())
 }
 
 func TestRunConfig_DefaultPath(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+
 	// 現在のディレクトリを保存
 	oldWd, err := os.Getwd()
 	require.NoError(t, err)
@@ -141,10 +158,15 @@ func TestRunConfig_DefaultPath(t *testing.T) {
   token: test_token
   repository: test/repo
 workflow:
-  interval: 20`
+  interval: 20
+log:
+  level: warn`
 
 	configPath := filepath.Join(configDir, "config.yml")
 	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	// Initialize app with the test config
+	helper.InitializeForTestWithOptions(configPath, nil)
 
 	// コマンドを実行（--configフラグなし）
 	cmd := newConfigCmd()

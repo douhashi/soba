@@ -2,14 +2,11 @@ package cli
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
-	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/service"
-	"github.com/douhashi/soba/pkg/errors"
+	"github.com/douhashi/soba/pkg/app"
 	"github.com/douhashi/soba/pkg/logging"
 )
 
@@ -27,7 +24,7 @@ func newStopCmd() *cobra.Command {
 }
 
 func runStop(cmd *cobra.Command, args []string) error {
-	daemonService := service.NewDaemonService(GetLogFactory())
+	daemonService := service.NewDaemonService(app.LogFactory())
 	return runStopWithService(cmd, args, daemonService)
 }
 
@@ -38,42 +35,25 @@ type StopServiceInterface interface {
 
 // runStopWithService allows dependency injection for testing
 func runStopWithService(cmd *cobra.Command, _ []string, daemonService StopServiceInterface) error {
-	var log logging.Logger = logging.NewMockLogger()
+	log := app.LogFactory().CreateComponentLogger("cli")
 
-	// verboseが指定されている場合はログレベルを調整
+	// Get config from global app
+	cfg := app.Config()
 
-	// 現在のディレクトリを取得
-	currentDir, err := os.Getwd()
-	if err != nil {
-		log.Error(context.Background(), "Failed to get current directory", logging.Field{Key: "error", Value: err.Error()})
-		return errors.WrapInternal(err, "failed to get current directory")
-	}
-
-	// 設定ファイルのパスを構築
-	configPath := filepath.Join(currentDir, ".soba", "config.yml")
-
-	// 設定ファイルが存在するかチェック（存在しなくても停止処理は続行）
+	// Get repository from config
 	var repository string
-	if _, statErr := os.Stat(configPath); !os.IsNotExist(statErr) {
-		// 設定ファイルが存在する場合は読み込む
-		cfg, loadErr := config.Load(configPath)
-		if loadErr != nil {
-			log.Warn(context.Background(), "Failed to load config, using empty repository", logging.Field{Key: "error", Value: loadErr.Error()})
-			repository = ""
-		} else {
-			repository = cfg.GitHub.Repository
-		}
-	} else {
-		log.Debug(context.Background(), "Config file not found, using empty repository", logging.Field{Key: "path", Value: configPath})
-		repository = ""
+	if cfg != nil {
+		repository = cfg.GitHub.Repository
 	}
 
 	ctx := context.Background()
 
-	log.Info(context.Background(), "Stopping daemon process", logging.Field{Key: "repository", Value: repository})
-	err = daemonService.Stop(ctx, repository)
+	log.Info(context.Background(), "Stopping daemon process")
+	err := daemonService.Stop(ctx, repository)
 	if err != nil {
-		log.Error(context.Background(), "Failed to stop daemon", logging.Field{Key: "error", Value: err.Error()})
+		log.Error(context.Background(), "Failed to stop daemon",
+			logging.Field{Key: "error", Value: err.Error()},
+		)
 		return err
 	}
 

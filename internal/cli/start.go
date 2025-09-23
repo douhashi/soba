@@ -2,15 +2,12 @@ package cli
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/douhashi/soba/internal/config"
 	"github.com/douhashi/soba/internal/service"
-	"github.com/douhashi/soba/pkg/errors"
-	"github.com/douhashi/soba/pkg/logging"
+	"github.com/douhashi/soba/pkg/app"
 )
 
 func newStartCmd() *cobra.Command {
@@ -33,12 +30,9 @@ Use -v/--verbose flag to enable debug logging.`,
 }
 
 func runStart(cmd *cobra.Command, args []string, daemon bool) error {
-	// Get CLI log level and verbose flags from root command
-	root := cmd.Root()
-	cliLogLevel, _ := root.Flags().GetString("log-level")
-	verboseFlag, _ := root.Flags().GetBool("verbose")
-
-	daemonService := service.NewDaemonServiceWithCLIParams(GetLogFactory(), cliLogLevel, verboseFlag)
+	// Create service using global LogFactory
+	// (app is already initialized with proper log level)
+	daemonService := service.NewDaemonService(app.LogFactory())
 	return runStartWithService(cmd, args, daemon, daemonService)
 }
 
@@ -50,46 +44,26 @@ type DaemonServiceInterface interface {
 
 // runStartWithService allows dependency injection for testing
 func runStartWithService(cmd *cobra.Command, _ []string, daemon bool, daemonService DaemonServiceInterface) error {
-	var log logging.Logger = logging.NewMockLogger()
+	log := app.LogFactory().CreateComponentLogger("cli")
 
-	// 現在のディレクトリを取得
-	currentDir, err := os.Getwd()
-	if err != nil {
-		log.Error(context.Background(), "Failed to get current directory", logging.Field{Key: "error", Value: err.Error()})
-		return errors.WrapInternal(err, "failed to get current directory")
-	}
-
-	// 設定ファイルのパスを構築
-	configPath := filepath.Join(currentDir, ".soba", "config.yml")
-
-	// 設定ファイルが存在するかチェック
-	if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
-		log.Error(context.Background(), "Config file not found", logging.Field{Key: "path", Value: configPath})
-		return errors.NewNotFoundError("config file not found. Please run 'soba init' first")
-	}
-
-	// 設定ファイルを読み込み
-	cfg, err := config.Load(configPath)
-	if err != nil {
-		log.Error(context.Background(), "Failed to load config", logging.Field{Key: "error", Value: err.Error()})
-		return errors.WrapInternal(err, "failed to load config")
-	}
+	// Get config from global app
+	cfg := app.Config()
 
 	ctx := context.Background()
 
 	if daemon {
-		log.Info(ctx, "Starting Issue monitoring in daemon mode", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
-		err = daemonService.StartDaemon(ctx, cfg)
+		log.Info(ctx, "Starting Issue monitoring in daemon mode")
+		err := daemonService.StartDaemon(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Successfully started daemon mode\n")
 		}
+		return err
 	} else {
-		log.Info(ctx, "Starting Issue monitoring in foreground mode", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
-		err = daemonService.StartForeground(ctx, cfg)
+		log.Info(ctx, "Starting Issue monitoring in foreground mode")
+		err := daemonService.StartForeground(ctx, cfg)
 		if err == nil {
 			cmd.Printf("Issue monitoring stopped\n")
 		}
+		return err
 	}
-
-	return err
 }

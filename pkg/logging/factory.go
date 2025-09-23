@@ -49,8 +49,13 @@ func NewFactory(cfg Config) (*Factory, error) {
 	}
 
 	level := parseLevel(cfg.Level)
+
+	// Create a LevelVar to properly set the minimum log level
+	levelVar := new(slog.LevelVar)
+	levelVar.Set(level)
+
 	opts := &slog.HandlerOptions{
-		Level:     level,
+		Level:     levelVar,
 		AddSource: cfg.AddSource,
 	}
 

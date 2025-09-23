@@ -31,7 +31,8 @@ func NewPrettyTextHandler(w io.Writer, opts *slog.HandlerOptions) slog.Handler {
 
 // Enabled implements slog.Handler
 func (h *PrettyTextHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	minLevel := slog.LevelInfo
+	// Default to debug level if not specified
+	minLevel := slog.LevelDebug
 	if h.opts.Level != nil {
 		minLevel = h.opts.Level.Level()
 	}

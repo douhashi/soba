@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+
+	"github.com/douhashi/soba/pkg/app"
 )
 
 // MockStopService はStopServiceのモック実装
@@ -20,6 +22,10 @@ func (m *MockStopService) Stop(ctx context.Context, repository string) error {
 }
 
 func TestStopCommand(t *testing.T) {
+	// Initialize app for testing
+	helper := app.NewTestHelper(t)
+	helper.InitializeForTest()
+
 	tests := []struct {
 		name           string
 		args           []string

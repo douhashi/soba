@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -68,7 +69,11 @@ func TestFactory(t *testing.T) {
 
 		// Test that logging creates the file
 		logger := factory.CreateLogger()
-		logger.Info(context.Background(), "test message")
+		// Use Error level to ensure it's logged (since level is "warn")
+		logger.Error(context.Background(), "test message")
+
+		// Wait a moment for file to be created
+		time.Sleep(100 * time.Millisecond)
 
 		// File should be created
 		_, err = os.Stat(logFile)

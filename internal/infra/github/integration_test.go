@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/douhashi/soba/pkg/logging"
 )
 
 func TestIntegration(t *testing.T) {
@@ -27,7 +29,10 @@ func TestIntegration(t *testing.T) {
 			tokenProvider := NewEnvTokenProvider("GITHUB_TOKEN")
 
 			// クライアントを作成
-			client, err := NewClient(tokenProvider, nil)
+			mockLogger := logging.NewMockLogger()
+			client, err := NewClient(tokenProvider, &ClientOptions{
+				Logger: mockLogger,
+			})
 			require.NoError(t, err)
 
 			// GitHub公開リポジトリから Issue を取得
@@ -111,8 +116,10 @@ func TestEndToEnd(t *testing.T) {
 		}
 
 		// クライアントの作成
+		mockLogger := logging.NewMockLogger()
 		client, err := NewClient(tokenProvider, &ClientOptions{
 			BaseURL: server.URL,
+			Logger:  mockLogger,
 		})
 		require.NoError(t, err)
 
@@ -170,6 +177,7 @@ func TestEndToEnd(t *testing.T) {
 		// リトライ機能付きクライアントの作成
 		client, err := NewClient(tokenProvider, &ClientOptions{
 			BaseURL: server.URL,
+			Logger:  logging.NewMockLogger(),
 		})
 		require.NoError(t, err)
 
@@ -178,6 +186,7 @@ func TestEndToEnd(t *testing.T) {
 			MaxRetries:  3,
 			InitialWait: 10 * time.Millisecond,
 			MaxWait:     100 * time.Millisecond,
+			Logger:      logging.NewMockLogger(),
 		})
 
 		var issues []Issue
@@ -232,6 +241,7 @@ func TestEndToEnd(t *testing.T) {
 
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  logging.NewMockLogger(),
 			})
 			require.NoError(t, err)
 
@@ -248,6 +258,7 @@ func TestEndToEnd(t *testing.T) {
 
 			client, err := NewClient(tokenProvider, &ClientOptions{
 				BaseURL: server.URL,
+				Logger:  logging.NewMockLogger(),
 			})
 			require.NoError(t, err)
 

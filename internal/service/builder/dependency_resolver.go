@@ -43,7 +43,9 @@ func (r *DependencyResolver) ResolveClients(ctx context.Context) (*ResolvedClien
 	// GitHub Client (必須)
 	r.logger.Debug(ctx, "Initializing GitHub client")
 	tokenProvider := github.NewDefaultTokenProvider()
-	githubClientImpl, err := github.NewClient(tokenProvider, &github.ClientOptions{})
+	githubClientImpl, err := github.NewClient(tokenProvider, &github.ClientOptions{
+		Logger: r.logFactory.CreateComponentLogger("github-client"),
+	})
 	if err != nil {
 		r.logger.Error(ctx, "Failed to initialize GitHub client",
 			logging.Field{Key: "error", Value: err.Error()},
