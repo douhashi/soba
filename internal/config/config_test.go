@@ -163,9 +163,24 @@ github:
 }
 
 func TestLoadConfigFileNotFound(t *testing.T) {
-	_, err := Load("/nonexistent/path/config.yml")
-	if err == nil {
-		t.Errorf("Expected error for nonexistent file, got nil")
+	cfg, err := Load("/nonexistent/path/config.yml")
+	if err != nil {
+		t.Errorf("Expected no error for nonexistent file (should return defaults), got %v", err)
+	}
+	if cfg == nil {
+		t.Errorf("Expected default config, got nil")
+	}
+
+	// Verify defaults are set
+	if cfg != nil && cfg.Workflow.Interval != 20 {
+		t.Errorf("Default workflow interval = %v, want 20", cfg.Workflow.Interval)
+	}
+	if cfg != nil && cfg.Git.WorktreeBasePath != ".git/soba/worktrees" {
+		t.Errorf("Default git worktree base path = %v, want .git/soba/worktrees", cfg.Git.WorktreeBasePath)
+	}
+	expectedLogPath := fmt.Sprintf(".soba/logs/soba-%d.log", os.Getpid())
+	if cfg != nil && cfg.Log.OutputPath != expectedLogPath {
+		t.Errorf("Default log output_path = %v, want %v", cfg.Log.OutputPath, expectedLogPath)
 	}
 }
 

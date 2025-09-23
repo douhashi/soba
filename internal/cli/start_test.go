@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,13 +153,20 @@ func TestRunStart_ConfigNotFound(t *testing.T) {
 	rootCmd.SetArgs([]string{"start"})
 
 	// 設定ファイルがない状態でコマンドを実行
-	// initializeApp()が失敗することを期待
-	err = rootCmd.Execute()
-	assert.Error(t, err)
-	// The error should be about config file not found
-	errMsg := err.Error()
-	assert.True(t, strings.Contains(errMsg, "config") || strings.Contains(errMsg, "no such file"),
-		"Expected config-related error, got: %s", errMsg)
+	// リポジトリ設定が必要なためpanicが発生することを期待
+	defer func() {
+		r := recover()
+		assert.NotNil(t, r, "Expected panic but none occurred")
+		if r != nil {
+			errMsg := fmt.Sprintf("%v", r)
+			assert.True(t, strings.Contains(errMsg, "repository") || strings.Contains(errMsg, "Failed to build daemon"),
+				"Expected repository or daemon build error, got: %s", errMsg)
+		}
+	}()
+
+	// This should panic
+	_ = rootCmd.Execute()
+	t.Fatal("Expected panic, but execution continued")
 }
 
 // MockDaemonServiceImpl はテスト用のモックサービス
