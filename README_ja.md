@@ -1,47 +1,55 @@
-# Soba - AI駆動開発ワークフロー自動化ツール
+# soba - AI駆動開発ワークフロー自動化ツール
 
 [![Go Version](https://img.shields.io/badge/go-1.23-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 > **For English README, see [here](README.md)**
 
-SobaはGitHub Issueを完全な本番環境対応の実装に変換する、革新的なAI駆動開発自動化ツールです。完全自律的なワークフローを通じて開発プロセスを変革します。
+sobaはClaude Codeを利用して、完全自律的なワークフローを提供します。
 
-## 🎯 Sobaとは？
+## 🎯 概要
 
-Sobaは**24時間365日稼働する自律的な開発サイクル**を構築します：
-- **GitHub Issue**が自動的に**Pull Request**になる
-- **AIエージェント**が実装、テスト、レビューを担当
-- 日常的な開発タスクに**人間の介入は不要**
-- **tmux統合**によりリアルタイムでワークフローを可視化
+soba は計画からプルリクエストのマージまで、開発ワークフロー全体を自動化します。
+GitHub Issueを監視し、Claude Code AIの支援により計画、実装、レビュー、マージの各フェーズを自動的に処理します。
 
-### 主要メリット
+### 主要な機能
 
-- 🚀 Issue解決時間を**90%削減**
-- 🤖 **完全自律**の開発サイクル
-- 📊 AIレビューによる**一貫したコード品質**
-- 🔄 **24時間365日継続**する開発ワークフロー
-- 👀 tmuxセッション監視による**完全な透明性**
+- 🤖 **自律ワークフロー**: Issue作成からマージまで完全自動化
+- 🏷️ **ラベル駆動の状態管理**: GitHubラベルによる進捗追跡
+- 🔄 **継続的処理**: 自動ポーリングとフェーズ遷移
+- 🎯 **優先順位管理**: Issue番号による順次処理
+- 🪟 **Tmux統合**: AIプロセスの可視化監視
+- 🔀 **Git Worktreeサポート**: 独立したブランチ管理
+- 💭 **Slack通知**: 進捗状態をSlack通知
+- 🚀 **自動マージ**: 承認後の自動PRマージ
 
-## 🏗️ アーキテクチャ
+## ワークフロー
 
-```
-GitHub Issue → AI企画 → 実装 → テスト → レビュー → マージ
-     ↓          ↓      ↓     ↓       ↓       ↓
-  [soba:todo] → [soba:ready] → [soba:doing] → [soba:review] → [closed]
+```mermaid
+graph TD
+    A[複数のsoba:todo] -->|soba: 優先度判定| B[1つをsoba:queued]
+    B -->|soba: 即座に| C[soba:planning]
+    C -->|Claude: 計画策定| D[soba:ready]
+    D -->|soba: 自動検出| E[soba:doing]
+    E -->|Claude: 実装・PR作成| F[soba:review-requested]
+    F -->|soba: 自動検出| G[soba:reviewing]
+    G -->|Claude: レビュー承認| H[soba:done + PR:soba:lgtm]
+    G -->|Claude: 修正要求| I[soba:requires-changes]
+    I -->|soba: 自動検出| K[soba:revising]
+    K -->|Claude: 修正対応| F
+    H -->|soba: 自動マージ| J[soba:done]
+    J -->|次のキューイング| A
 ```
 
 各フェーズはClaude Code AIによる完全自動処理：
-- **企画**: 要件分析と実装戦略
-- **実装**: コード生成とファイル修正
-- **テスト**: 自動テスト実行と検証
-- **レビュー**: AI駆動のコードレビューと品質保証
+- **Plan**: 要件分析と実装戦略
+- **Implement**: コード生成とファイル修正
+- **Review**: AI駆動のコードレビューと品質保証
 
 ## 🚀 クイックスタート
 
 ### 前提条件
 
-- **Go 1.23+**
 - **Git 2.0+**
 - **tmux 2.0+** (セッション管理用)
 - **GitHub CLI** (推奨) またはGitHubトークン
@@ -108,54 +116,119 @@ soba status
 # デーモン停止
 soba stop
 
-# アクティブなtmuxセッション表示
-soba sessions
-
-# 特定のIssueセッションを開く
-soba open issue-123-feature
-
 # 設定表示
 soba config
 
-# 完了したworktreeのクリーンアップ
-soba cleanup
+# ログを表示
+soba log
 ```
 
 ### ラベルベース状態管理
 
-SobaはGitHubラベルでIssueライフサイクルを追跡：
+#### Issueラベル（状態管理）
 
-- `soba:todo` - 処理準備完了
-- `soba:ready` - 企画フェーズ
-- `soba:doing` - 実装進行中
-- `soba:review` - AIレビュー中
-- `soba:done` - 実装完了、マージ準備完了
+| ラベル | 状態 | 説明 |
+|--------|------|------|
+| `soba:todo` | 待機 | 新規Issue、処理待ち |
+| `soba:queued` | キュー選択 | 処理対象として選択済み |
+| `soba:planning` | 計画中 | Claudeが実装計画を策定中 |
+| `soba:ready` | 準備完了 | 計画完了、実装待ち |
+| `soba:doing` | 実装中 | Claudeが実装作業中 |
+| `soba:review-requested` | レビュー待ち | PR作成済み、レビュー待ち |
+| `soba:reviewing` | レビュー中 | ClaudeがPRをレビュー中 |
+| `soba:done` | 完了 | レビュー承認済み、マージ可能 |
+| `soba:requires-changes` | 修正要求 | レビューで修正が必要と判断 |
+| `soba:revising` | 修正中 | Claudeが修正対応中 |
+
+#### PRラベル
+
+| ラベル | 説明 |
+|--------|------|
+| `soba:lgtm` | レビュー承認済み、自動マージ対象 |
 
 ## ⚙️ 設定
 
 ### 設定ファイル
 
-Sobaは`.soba/config.yml`で設定：
+sobaは`.soba/config.yml`で設定：
 
 ```yaml
+# GitHub settings
 github:
-  repository: "owner/repo"
-  auth_method: "gh_cli"  # または "token"
-  token: "${GITHUB_TOKEN}"
+  # Authentication method: 'gh', 'env', or omit for auto-detect
+  # Use 'gh' to use GitHub CLI authentication (gh auth token)
+  # Use 'env' to use environment variable
+  auth_method: gh  # or 'env', or omit for auto-detect
 
+  # Personal Access Token (required when auth_method is 'env' or omitted)
+  # Can use environment variable
+  # token: ${GITHUB_TOKEN}
+
+  # Target repository (format: owner/repo)
+  repository: douhashi/soba
+
+# Workflow settings
 workflow:
-  interval: 10           # ポーリング間隔（秒）
-  max_parallel: 3        # 最大並行Issue数
-  timeout: 3600          # Issue毎のタイムアウト（秒）
-  auto_merge_enabled: true
-
-tmux:
+  # Issue polling interval in seconds (default: 20)
+  interval: 20
+  # Use tmux for Claude execution (default: true)
   use_tmux: true
-  command_delay: 3       # コマンド間の遅延（秒）
+  # Enable automatic PR merging (default: true)
+  auto_merge_enabled: true
+  # Clean up tmux windows for closed issues (default: true)
+  closed_issue_cleanup_enabled: true
+  # Cleanup interval in seconds (default: 300)
+  closed_issue_cleanup_interval: 300
+  # Command delay for tmux panes in seconds (default: 3)
+  tmux_command_delay: 3
 
-logging:
-  level: "info"
-  format: "json"
+# Slack notifications
+slack:
+  # Webhook URL for Slack notifications
+  # Get your webhook URL from: https://api.slack.com/messaging/webhooks
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  # Enable notifications for phase starts (default: false)
+  notifications_enabled: true
+
+# Git settings
+git:
+  # Base path for git worktrees
+  worktree_base_path: .git/soba/worktrees
+
+# Logging settings
+log:
+  # Log file output path (default: .soba/logs/soba-{pid}.log)
+  # ${PID} will be replaced with actual process ID at runtime
+  output_path: .soba/logs/soba-${PID}.log
+  # Number of log files to retain (default: 10)
+  retention_count: 10
+  # Log level: debug, info, warn, error (default: info)
+  level: info
+  # Log format: "text" or "json" (default: text)
+  format: text
+
+# Phase commands (optional - for custom Claude commands)
+phase:
+  plan:
+    command: claude
+    options:
+      - --dangerously-skip-permissions
+    parameter: '/soba:plan {{issue-number}}'
+  implement:
+    command: claude
+    options:
+      - --dangerously-skip-permissions
+    parameter: '/soba:implement {{issue-number}}'
+  review:
+    command: claude
+    options:
+      - --dangerously-skip-permissions
+    parameter: '/soba:review {{issue-number}}'
+  revise:
+    command: claude
+    options:
+      - --dangerously-skip-permissions
+    parameter: '/soba:revise {{issue-number}}'
 ```
 
 ### 環境変数
@@ -171,54 +244,11 @@ export SOBA_LOG_FORMAT="json"
 
 ## 🔧 高度な使用方法
 
-### カスタムIssueテンプレート
-
-AI理解向上のための構造化テンプレートでIssue作成：
-
-```markdown
-## 概要
-機能/バグの簡潔な説明
-
-## 要件
-- 具体的な要件1
-- 具体的な要件2
-
-## 完了条件
-- [ ] テストAが通る
-- [ ] ドキュメント更新済み
-- [ ] 破壊的変更なし
-
-## 実装メモ
-- 既存パターンXを使用
-- パフォーマンスへの影響を考慮
-```
-
 ### 監視とデバッグ
 
 ```bash
 # デーモンログ確認
-tail -f /tmp/soba.log
-
-# 特定Issue進捗監視
-tmux attach -t soba-issue-123-feature
-
-# GitHub API接続確認
-soba test-connection
-
-# 処理統計表示
-soba stats
-```
-
-### バッチ処理
-
-複数Issueの同時処理：
-
-```bash
-# 複数Issueにラベル追加
-gh issue edit 123 124 125 --add-label "soba:todo"
-
-# すべてのアクティブセッション監視
-tmux list-sessions | grep soba
+soba log -f
 ```
 
 ## 🛠️ 開発
@@ -229,20 +259,13 @@ tmux list-sessions | grep soba
 git clone https://github.com/douhashi/soba.git
 cd soba
 go mod download
-go build -o soba cmd/soba/main.go
+make build
 ```
 
 ### テスト実行
 
 ```bash
-# 単体テスト実行
-go test ./...
-
-# 統合テスト実行
-go test ./... -tags=integration
-
-# カバレッジ付きテスト
-go test -cover ./...
+make test
 ```
 
 ### プロジェクト構造
@@ -263,94 +286,12 @@ soba/
 └── .soba/             # 設定テンプレート
 ```
 
-## 🔍 トラブルシューティング
-
-### よくある問題
-
-**Issue処理が開始されない:**
-```bash
-# ラベル確認
-gh issue view 123 --json labels
-
-# デーモン状態確認
-soba status
-
-# ログ確認
-tail -f /tmp/soba.log
-```
-
-**tmuxセッション問題:**
-```bash
-# セッション一覧
-tmux list-sessions
-
-# 停止したセッション削除
-tmux kill-session -t soba-issue-123-feature
-
-# デーモン再起動
-soba stop && soba start
-```
-
-**Git worktree問題:**
-```bash
-# worktree一覧
-git worktree list
-
-# 自動クリーンアップ
-soba cleanup
-
-# 手動クリーンアップ
-git worktree remove .git/soba/worktrees/issue-123
-```
-
-### パフォーマンスチューニング
-
-高ボリュームリポジトリ向け：
-
-```yaml
-workflow:
-  interval: 5           # より高速なポーリング
-  max_parallel: 5       # より多くの並行Issue
-  timeout: 7200         # 複雑なIssue用の長いタイムアウト
-```
-
-## 🤝 貢献
-
-貢献を歓迎します！詳細は[貢献ガイド](CONTRIBUTING.md)をご覧ください。
-
-### 開発環境セットアップ
-
-1. リポジトリをフォーク
-2. 機能ブランチを作成
-3. 変更を実装
-4. 新機能用のテストを追加
-5. プルリクエストを送信
-
-### コーディング標準
-
-- Go慣例とイディオムに従う
-- 包括的なテストを作成
-- 新機能のドキュメントを更新
-- 構造化ログを使用
-- エラーハンドリングを適切に行う
-
 ## 📄 ライセンス
 
 このプロジェクトはMITライセンス下にあります - 詳細は[LICENSE](LICENSE)ファイルをご覧ください。
-
-## 🙏 謝辞
-
-- [soba-cli (Ruby版)](https://github.com/douhashi/soba-cli)の基盤の上に構築
-- AI駆動開発のため[Claude Code](https://claude.ai/code)を使用
-- CLIフレームワークに[Cobra](https://github.com/spf13/cobra)を使用
-- 設定管理に[Viper](https://github.com/spf13/viper)を使用
 
 ## 📞 サポート
 
 - 📚 **ドキュメント**: `docs/`ディレクトリを確認
 - 🐛 **Issues**: [GitHub Issues](https://github.com/douhashi/soba/issues)
-- 💬 **ディスカッション**: [GitHub Discussions](https://github.com/douhashi/soba/discussions)
 
----
-
-**Soba** - 自律的AIワークフローによるソフトウェア開発の変革。
