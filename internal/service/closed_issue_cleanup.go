@@ -112,15 +112,35 @@ func (s *ClosedIssueCleanupService) Start(ctx context.Context) error {
 // cleanupOnce は1回のクリーンアップ処理を実行する
 func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 	if s.log != nil {
-		s.log.Debug(ctx, "Starting cleanup of closed issues")
+		s.log.Info(ctx, "Starting cleanup of closed issues")
 	}
 
-	// githubClientがnilの場合は何もしない
+	// githubClientがnilの場合はスキップ
 	if s.githubClient == nil {
+		s.logCleanupCompleted(ctx, 0)
 		return nil
 	}
 
 	// CloseされたIssueの一覧を取得
+	issues, err := s.fetchClosedIssues(ctx)
+	if err != nil {
+		return err
+	}
+
+	// tmuxClientがnilの場合も何もしない
+	if s.tmuxClient == nil {
+		return nil
+	}
+
+	// 各Issueに対応するtmuxウィンドウを削除
+	deletedCount := s.cleanupWindows(ctx, issues)
+
+	s.logCleanupCompleted(ctx, deletedCount)
+	return nil
+}
+
+// fetchClosedIssues は閉じたIssueの一覧を取得する
+func (s *ClosedIssueCleanupService) fetchClosedIssues(ctx context.Context) ([]github.Issue, error) {
 	opts := github.ListIssuesOptions{
 		State: "closed",
 	}
@@ -130,60 +150,76 @@ func (s *ClosedIssueCleanupService) cleanupOnce(ctx context.Context) error {
 		if s.log != nil {
 			s.log.Error(ctx, "Failed to list closed issues", logging.Field{Key: "error", Value: err})
 		}
-		return fmt.Errorf("failed to list closed issues: %w", err)
+		return nil, fmt.Errorf("failed to list closed issues: %w", err)
 	}
 
 	if s.log != nil {
 		s.log.Debug(ctx, "Found closed issues", logging.Field{Key: "count", Value: len(issues)})
 	}
+	return issues, nil
+}
 
-	// tmuxClientがnilの場合も何もしない
-	if s.tmuxClient == nil {
-		return nil
-	}
+// cleanupWindows は各Issueのtmuxウィンドウを削除する
+func (s *ClosedIssueCleanupService) cleanupWindows(ctx context.Context, issues []github.Issue) int {
+	deletedCount := 0
 
-	// 各Issueに対応するtmuxウィンドウを削除
 	for _, issue := range issues {
-		windowName := fmt.Sprintf("issue-%d", issue.Number)
-
-		// ウィンドウの存在確認
-		exists, err := s.tmuxClient.WindowExists(s.sessionName, windowName)
-		if err != nil {
-			if s.log != nil {
-				s.log.Error(ctx, "Failed to check window existence",
-					logging.Field{Key: "session", Value: s.sessionName},
-					logging.Field{Key: "window", Value: windowName},
-					logging.Field{Key: "error", Value: err})
-			}
-			continue
-		}
-
-		if !exists {
-			if s.log != nil {
-				s.log.Debug(ctx, "Window does not exist",
-					logging.Field{Key: "session", Value: s.sessionName},
-					logging.Field{Key: "window", Value: windowName})
-			}
-			continue
-		}
-
-		// ウィンドウを削除
-		if err := s.tmuxClient.DeleteWindow(s.sessionName, windowName); err != nil {
-			if s.log != nil {
-				s.log.Error(ctx, "Failed to delete tmux window",
-					logging.Field{Key: "window", Value: windowName},
-					logging.Field{Key: "issue", Value: issue.Number},
-					logging.Field{Key: "error", Value: err})
-			}
-			continue
-		}
-
-		if s.log != nil {
-			s.log.Info(ctx, "Deleted tmux window for closed issue",
-				logging.Field{Key: "window", Value: windowName},
-				logging.Field{Key: "issue", Value: issue.Number})
+		if s.deleteWindowForIssue(ctx, issue) {
+			deletedCount++
 		}
 	}
 
-	return nil
+	return deletedCount
+}
+
+// deleteWindowForIssue は指定されたIssueのウィンドウを削除する
+func (s *ClosedIssueCleanupService) deleteWindowForIssue(ctx context.Context, issue github.Issue) bool {
+	windowName := fmt.Sprintf("issue-%d", issue.Number)
+
+	// ウィンドウの存在確認
+	exists, err := s.tmuxClient.WindowExists(s.sessionName, windowName)
+	if err != nil {
+		if s.log != nil {
+			s.log.Error(ctx, "Failed to check window existence",
+				logging.Field{Key: "session", Value: s.sessionName},
+				logging.Field{Key: "window", Value: windowName},
+				logging.Field{Key: "error", Value: err})
+		}
+		return false
+	}
+
+	if !exists {
+		if s.log != nil {
+			s.log.Debug(ctx, "Window does not exist",
+				logging.Field{Key: "session", Value: s.sessionName},
+				logging.Field{Key: "window", Value: windowName})
+		}
+		return false
+	}
+
+	// ウィンドウを削除
+	if err := s.tmuxClient.DeleteWindow(s.sessionName, windowName); err != nil {
+		if s.log != nil {
+			s.log.Error(ctx, "Failed to delete tmux window",
+				logging.Field{Key: "window", Value: windowName},
+				logging.Field{Key: "issue", Value: issue.Number},
+				logging.Field{Key: "error", Value: err})
+		}
+		return false
+	}
+
+	if s.log != nil {
+		s.log.Info(ctx, "Deleted tmux window for closed issue",
+			logging.Field{Key: "window", Value: windowName},
+			logging.Field{Key: "issue", Value: issue.Number})
+	}
+	return true
+}
+
+// logCleanupCompleted はクリーンアップ完了のログを出力する
+func (s *ClosedIssueCleanupService) logCleanupCompleted(ctx context.Context, deletedCount int) {
+	if s.log != nil {
+		s.log.Info(ctx, "Cleanup of closed issues completed",
+			logging.Field{Key: "deleted_count", Value: deletedCount})
+	}
 }

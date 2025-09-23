@@ -318,3 +318,58 @@ func TestParseRepository(t *testing.T) {
 		assert.Equal(t, "", repo)
 	})
 }
+
+func TestPRWatcher_WatchCycleLogs(t *testing.T) {
+	t.Run("watchOnce開始時と完了時にINFOログが出力される", func(t *testing.T) {
+		cfg := &config.Config{
+			GitHub: config.GitHubConfig{
+				Repository: "owner/repo",
+			},
+			Workflow: config.WorkflowConfig{
+				Interval: 1,
+			},
+		}
+
+		mockClient := &MockGitHubClientForPR{
+			prs: []github.PullRequest{
+				{
+					ID:     1,
+					Number: 10,
+					Title:  "Test PR",
+					State:  "open",
+					Labels: []github.Label{
+						{Name: "other-label"},
+					},
+				},
+			},
+		}
+
+		watcher := NewPRWatcher(mockClient, cfg)
+		mockLogger := logging.NewMockLogger()
+		watcher.SetLogger(mockLogger)
+
+		ctx := context.Background()
+		err := watcher.watchOnce(ctx)
+		require.NoError(t, err)
+
+		// "Starting PR watch cycle" がDEBUGからINFOに変更されたことを確認
+		foundStartLog := false
+		for _, msg := range mockLogger.Messages {
+			if msg.Message == "Starting PR watch cycle" && msg.Level == "INFO" {
+				foundStartLog = true
+				break
+			}
+		}
+		assert.True(t, foundStartLog, "expected 'Starting PR watch cycle' INFO log")
+
+		// "PR watch cycle completed" INFOログが追加されたことを確認
+		foundCompleteLog := false
+		for _, msg := range mockLogger.Messages {
+			if msg.Message == "PR watch cycle completed" && msg.Level == "INFO" {
+				foundCompleteLog = true
+				break
+			}
+		}
+		assert.True(t, foundCompleteLog, "expected 'PR watch cycle completed' INFO log")
+	})
+}

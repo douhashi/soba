@@ -133,7 +133,7 @@ func (s *SlackManager) sendBlockMessage(templateName string, data interface{}) {
 				logging.Field{Key: "error", Value: err.Error()},
 			)
 		} else {
-			s.logger.Debug(context.Background(), "Slack block notification sent successfully",
+			s.logger.Info(context.Background(), "Slack notification sent",
 				logging.Field{Key: "template", Value: templateName},
 			)
 		}
@@ -142,6 +142,10 @@ func (s *SlackManager) sendBlockMessage(templateName string, data interface{}) {
 
 // Implementation methods
 func (s *SlackManager) NotifyPhaseStart(phase string, issueNumber int) {
+	s.logger.Debug(context.Background(), "Sending phase start notification",
+		logging.Field{Key: "phase", Value: phase},
+		logging.Field{Key: "issueNumber", Value: issueNumber},
+	)
 	// Ensure repository is set, use a fallback if empty
 	repository := s.githubConfig.Repository
 	if repository == "" {
@@ -162,6 +166,10 @@ func (s *SlackManager) NotifyPhaseStart(phase string, issueNumber int) {
 }
 
 func (s *SlackManager) NotifyPRMerged(prNumber, issueNumber int) {
+	s.logger.Debug(context.Background(), "Sending PR merged notification",
+		logging.Field{Key: "prNumber", Value: prNumber},
+		logging.Field{Key: "issueNumber", Value: issueNumber},
+	)
 	data := PRMergedData{
 		PRNumber:    prNumber,
 		IssueNumber: issueNumber,
@@ -172,6 +180,10 @@ func (s *SlackManager) NotifyPRMerged(prNumber, issueNumber int) {
 }
 
 func (s *SlackManager) NotifyError(title, errorMessage string) {
+	s.logger.Debug(context.Background(), "Sending error notification",
+		logging.Field{Key: "title", Value: title},
+		logging.Field{Key: "error", Value: errorMessage},
+	)
 	data := ErrorData{
 		Title:        title,
 		ErrorMessage: errorMessage,
@@ -180,6 +192,9 @@ func (s *SlackManager) NotifyError(title, errorMessage string) {
 }
 
 func (s *SlackManager) Notify(text string) {
+	s.logger.Debug(context.Background(), "Sending general notification",
+		logging.Field{Key: "text", Value: text},
+	)
 	data := NotifyData{
 		Text: text,
 	}
