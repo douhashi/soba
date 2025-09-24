@@ -45,14 +45,18 @@ func Initialize(cfg *config.Config, logger logging.Logger) {
 		timeout := 30 * time.Second
 		client := NewClient(cfg.Slack.WebhookURL, timeout)
 
-		// Initialize template manager
-		templateManager := NewTemplateManager(logger)
+		// Initialize template manager with embedded templates
+		templateManager := NewTemplateManagerWithFS(logger, config.GetSlackTemplatesFS())
 		if err := templateManager.LoadTemplates(); err != nil {
-			logger.Warn(context.Background(), "Failed to load Slack templates, falling back to NoOp manager",
-				logging.Field{Key: "error", Value: err.Error()},
-			)
-			instance = &NoOpManager{}
-			return
+			// Fallback to filesystem templates
+			templateManager = NewTemplateManager(logger)
+			if err := templateManager.LoadTemplates(); err != nil {
+				logger.Warn(context.Background(), "Failed to load Slack templates, falling back to NoOp manager",
+					logging.Field{Key: "error", Value: err.Error()},
+				)
+				instance = &NoOpManager{}
+				return
+			}
 		}
 
 		instance = &SlackManager{
