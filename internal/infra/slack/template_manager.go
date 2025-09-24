@@ -3,6 +3,7 @@ package slack
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,9 +20,11 @@ type TemplateManager interface {
 }
 
 type templateManager struct {
-	templates map[string]*template.Template
-	mutex     sync.RWMutex
-	logger    logging.Logger
+	templates  map[string]*template.Template
+	mutex      sync.RWMutex
+	logger     logging.Logger
+	filesystem embed.FS
+	useEmbed   bool
 }
 
 type BlockMessage struct {
@@ -32,6 +35,17 @@ func NewTemplateManager(logger logging.Logger) TemplateManager {
 	return &templateManager{
 		templates: make(map[string]*template.Template),
 		logger:    logger,
+		useEmbed:  false,
+	}
+}
+
+// NewTemplateManagerWithFS creates a new template manager with embedded filesystem
+func NewTemplateManagerWithFS(logger logging.Logger, fs embed.FS) TemplateManager {
+	return &templateManager{
+		templates:  make(map[string]*template.Template),
+		logger:     logger,
+		filesystem: fs,
+		useEmbed:   true,
 	}
 }
 
@@ -52,19 +66,33 @@ func (tm *templateManager) LoadTemplates() error {
 
 	for name, filename := range templateFiles {
 		filePath := filepath.Join(templateDir, filename)
+		var content []byte
+		var err error
 
-		// Check if file exists
-		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			tm.logger.Debug(context.Background(), "Template file not found, skipping",
-				logging.Field{Key: "template", Value: name},
-				logging.Field{Key: "file", Value: filePath},
-			)
-			continue
-		}
+		if tm.useEmbed {
+			// Read from embedded filesystem
+			content, err = tm.filesystem.ReadFile(filePath)
+			if err != nil {
+				tm.logger.Debug(context.Background(), "Template file not found in embed, skipping",
+					logging.Field{Key: "template", Value: name},
+					logging.Field{Key: "file", Value: filePath},
+				)
+				continue
+			}
+		} else {
+			// Check if file exists on filesystem
+			if _, statErr := os.Stat(filePath); os.IsNotExist(statErr) {
+				tm.logger.Debug(context.Background(), "Template file not found, skipping",
+					logging.Field{Key: "template", Value: name},
+					logging.Field{Key: "file", Value: filePath},
+				)
+				continue
+			}
 
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return fmt.Errorf("failed to read template file %s: %w", filePath, err)
+			content, err = os.ReadFile(filePath)
+			if err != nil {
+				return fmt.Errorf("failed to read template file %s: %w", filePath, err)
+			}
 		}
 
 		tmpl, err := template.New(name).Parse(string(content))
