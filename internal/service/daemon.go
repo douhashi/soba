@@ -362,12 +362,24 @@ func (d *daemonService) StartDaemon(ctx context.Context, cfg *config.Config) err
 	}
 
 	// 環境変数でバックグラウンドプロセスか判定
-	if os.Getenv(envBackgroundProcess) != envValueTrue {
+	backgroundMode := os.Getenv(envBackgroundProcess)
+	d.logger.Debug(ctx, "Checking background process mode",
+		logging.Field{Key: "env", Value: backgroundMode},
+		logging.Field{Key: "pid", Value: os.Getpid()},
+	)
+
+	if backgroundMode != envValueTrue {
 		// 親プロセス: 子プロセスを起動
+		d.logger.Info(ctx, "Parent process: forking daemon",
+			logging.Field{Key: "pid", Value: os.Getpid()},
+		)
 		return d.forkAndExit()
 	}
 
 	// 子プロセス: デーモン処理を継続
+	d.logger.Info(ctx, "Child process: continuing as daemon",
+		logging.Field{Key: "pid", Value: os.Getpid()},
+	)
 	// ログファイルパスを準備
 	logPath, err := d.prepareLogPath(cfg)
 	if err != nil {
@@ -413,6 +425,12 @@ func (d *daemonService) forkAndExit() error {
 		return nil
 	}
 
+	// 既にバックグラウンドプロセスの場合はエラー
+	if os.Getenv(envBackgroundProcess) == envValueTrue {
+		d.logger.Error(ctx, "Already running as background process")
+		return errors.NewInternalError("already running as background process")
+	}
+
 	// 現在の実行ファイルパスを取得
 	execPath, err := os.Executable()
 	if err != nil {
@@ -427,7 +445,15 @@ func (d *daemonService) forkAndExit() error {
 
 	// 子プロセスを起動
 	cmd := exec.Command(execPath, args...)
-	cmd.Env = append(os.Environ(), envBackgroundProcess+"="+envValueTrue)
+	// 環境変数をクリーンにコピーして設定
+	envs := []string{}
+	for _, env := range os.Environ() {
+		// SOBA_BACKGROUND_PROCESSを除外
+		if !strings.HasPrefix(env, envBackgroundProcess+"=") {
+			envs = append(envs, env)
+		}
+	}
+	cmd.Env = append(envs, envBackgroundProcess+"="+envValueTrue)
 
 	// プロセス分離の属性を設定
 	cmd.SysProcAttr = d.getSysProcAttr()
@@ -453,6 +479,9 @@ func (d *daemonService) forkAndExit() error {
 	)
 
 	// 親プロセスを終了
+	d.logger.Info(ctx, "Parent process exiting",
+		logging.Field{Key: "pid", Value: os.Getpid()},
+	)
 	os.Exit(0)
 	return nil
 }
