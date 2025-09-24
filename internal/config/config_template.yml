@@ -39,6 +39,8 @@ slack:
 git:
   # Base path for git worktrees
   worktree_base_path: .git/soba/worktrees
+  # Base branch for rebase operations and worktree creation (default: main)
+  base_branch: main
 
 # Logging settings
 log:
