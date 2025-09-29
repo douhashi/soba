@@ -90,7 +90,7 @@ func TestNewPRWatcher(t *testing.T) {
 		}
 		client := &MockGitHubClientForPR{}
 
-		watcher := NewPRWatcher(client, cfg)
+		watcher := NewPRWatcher(client, NewMockGitClient(), cfg)
 		require.NotNil(t, watcher)
 		assert.Equal(t, 30*time.Second, watcher.interval)
 		assert.NotNil(t, watcher.logger)
@@ -107,7 +107,7 @@ func TestNewPRWatcher(t *testing.T) {
 		}
 		client := &MockGitHubClientForPR{}
 
-		watcher := NewPRWatcher(client, cfg)
+		watcher := NewPRWatcher(client, NewMockGitClient(), cfg)
 		assert.Equal(t, 20*time.Second, watcher.interval)
 	})
 }
@@ -153,7 +153,7 @@ func TestWatchOnce(t *testing.T) {
 			},
 		}
 
-		watcher := NewPRWatcher(mockClient, cfg)
+		watcher := NewPRWatcher(mockClient, NewMockGitClient(), cfg)
 		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
@@ -207,7 +207,7 @@ func TestWatchOnce(t *testing.T) {
 			},
 		}
 
-		watcher := NewPRWatcher(mockClient, cfg)
+		watcher := NewPRWatcher(mockClient, NewMockGitClient(), cfg)
 		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
@@ -250,7 +250,7 @@ func TestWatchOnce(t *testing.T) {
 			},
 		}
 
-		watcher := NewPRWatcher(mockClient, cfg)
+		watcher := NewPRWatcher(mockClient, NewMockGitClient(), cfg)
 		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
@@ -288,7 +288,7 @@ func TestWatchOnce(t *testing.T) {
 			mergeError: &github.ErrorResponse{Message: "Merge failed"},
 		}
 
-		watcher := NewPRWatcher(mockClient, cfg)
+		watcher := NewPRWatcher(mockClient, NewMockGitClient(), cfg)
 		watcher.SetLogger(logging.NewMockLogger())
 
 		ctx := context.Background()
@@ -305,7 +305,7 @@ func TestParseRepository(t *testing.T) {
 				Repository: "owner/repo",
 			},
 		}
-		watcher := NewPRWatcher(&MockGitHubClientForPR{}, cfg)
+		watcher := NewPRWatcher(&MockGitHubClientForPR{}, NewMockGitClient(), cfg)
 
 		owner, repo := watcher.parseRepository()
 		assert.Equal(t, "owner", owner)
@@ -318,7 +318,7 @@ func TestParseRepository(t *testing.T) {
 				Repository: "invalid-format",
 			},
 		}
-		watcher := NewPRWatcher(&MockGitHubClientForPR{}, cfg)
+		watcher := NewPRWatcher(&MockGitHubClientForPR{}, NewMockGitClient(), cfg)
 		watcher.SetLogger(logging.NewMockLogger())
 
 		owner, repo := watcher.parseRepository()
@@ -352,7 +352,7 @@ func TestPRWatcher_WatchCycleLogs(t *testing.T) {
 			},
 		}
 
-		watcher := NewPRWatcher(mockClient, cfg)
+		watcher := NewPRWatcher(mockClient, NewMockGitClient(), cfg)
 		mockLogger := logging.NewMockLogger()
 		watcher.SetLogger(mockLogger)
 

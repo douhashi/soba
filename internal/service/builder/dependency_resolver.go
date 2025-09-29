@@ -174,6 +174,7 @@ func (r *DependencyResolver) ResolveServices(ctx context.Context, clients *Resol
 	r.logger.Debug(ctx, "Creating PR watcher")
 	services.PRWatcher = serviceFactory.CreatePRWatcher(
 		clients.GitHubClient,
+		clients.GitClient,
 		r.config,
 	)
 

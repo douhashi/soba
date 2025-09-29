@@ -91,12 +91,18 @@ func (f *DefaultServiceFactory) CreateQueueManager(githubClient builder.GitHubCl
 }
 
 // CreatePRWatcher creates PR watcher
-func (f *DefaultServiceFactory) CreatePRWatcher(githubClient builder.GitHubClientInterface, cfg *config.Config) builder.PRWatcher {
+func (f *DefaultServiceFactory) CreatePRWatcher(githubClient builder.GitHubClientInterface, gitClient interface{}, cfg *config.Config) builder.PRWatcher {
 	var concreteGithubClient GitHubClientInterface
 	if impl, ok := githubClient.(GitHubClientInterface); ok {
 		concreteGithubClient = impl
 	}
-	return &PRWatcherAdapter{NewPRWatcher(concreteGithubClient, cfg)}
+
+	var concreteGitClient GitClient
+	if gc, ok := gitClient.(*git.Client); ok {
+		concreteGitClient = gc
+	}
+
+	return &PRWatcherAdapter{NewPRWatcher(concreteGithubClient, concreteGitClient, cfg)}
 }
 
 // CreateClosedIssueCleanupService creates cleanup service

@@ -15,14 +15,15 @@ import (
 
 // PRWatcher はPR監視機能を提供する
 type PRWatcher struct {
-	client   GitHubClientInterface
-	config   *config.Config
-	interval time.Duration
-	logger   logging.Logger
+	client    GitHubClientInterface
+	gitClient GitClient
+	config    *config.Config
+	interval  time.Duration
+	logger    logging.Logger
 }
 
 // NewPRWatcher は新しいPRWatcherを作成する
-func NewPRWatcher(client GitHubClientInterface, cfg *config.Config) *PRWatcher {
+func NewPRWatcher(client GitHubClientInterface, gitClient GitClient, cfg *config.Config) *PRWatcher {
 	// デフォルト値の設定
 	if cfg.Workflow.Interval == 0 {
 		cfg.Workflow.Interval = 20
@@ -32,10 +33,11 @@ func NewPRWatcher(client GitHubClientInterface, cfg *config.Config) *PRWatcher {
 	log := logging.NewMockLogger() // デフォルトでMockLogger使用
 
 	return &PRWatcher{
-		client:   client,
-		config:   cfg,
-		interval: time.Duration(cfg.Workflow.Interval) * time.Second,
-		logger:   log,
+		client:    client,
+		gitClient: gitClient,
+		config:    cfg,
+		interval:  time.Duration(cfg.Workflow.Interval) * time.Second,
+		logger:    log,
 	}
 }
 
@@ -210,6 +212,27 @@ func (w *PRWatcher) mergePullRequest(ctx context.Context, pr github.PullRequest)
 			logging.Field{Key: "number", Value: pr.Number},
 			logging.Field{Key: "sha", Value: resp.SHA},
 		)
+
+		// マージ後にbase branchを最新に更新
+		if w.gitClient != nil {
+			w.logger.Info(ctx, "Updating base branch after PR merge",
+				logging.Field{Key: "branch", Value: w.config.Git.BaseBranch},
+				logging.Field{Key: "pr_number", Value: pr.Number},
+			)
+
+			if err := w.gitClient.UpdateBaseBranch(w.config.Git.BaseBranch); err != nil {
+				w.logger.Error(ctx, "Failed to update base branch after PR merge",
+					logging.Field{Key: "branch", Value: w.config.Git.BaseBranch},
+					logging.Field{Key: "pr_number", Value: pr.Number},
+					logging.Field{Key: "error", Value: err.Error()},
+				)
+			} else {
+				w.logger.Info(ctx, "Successfully updated base branch after PR merge",
+					logging.Field{Key: "branch", Value: w.config.Git.BaseBranch},
+					logging.Field{Key: "pr_number", Value: pr.Number},
+				)
+			}
+		}
 
 		// Slack通知: PRマージ完了
 		// PR番号からIssue番号を抽出 (ファイル名パターンから推測)
