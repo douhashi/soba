@@ -18,3 +18,31 @@ func (m *MockGitWorkspaceManager) PrepareWorkspace(issueNumber int) error {
 func (m *MockGitWorkspaceManager) CleanupWorkspace(issueNumber int) error {
 	return nil
 }
+
+// MockGitClient はGitClientのモック実装
+type MockGitClient struct{}
+
+// NewMockGitClient は新しいMockGitClientを作成する
+func NewMockGitClient() GitClient {
+	return &MockGitClient{}
+}
+
+// CreateWorktree は成功を返す（モック実装）
+func (m *MockGitClient) CreateWorktree(worktreePath, branchName, baseBranch string) error {
+	return nil
+}
+
+// RemoveWorktree は成功を返す（モック実装）
+func (m *MockGitClient) RemoveWorktree(worktreePath string) error {
+	return nil
+}
+
+// UpdateBaseBranch は成功を返す（モック実装）
+func (m *MockGitClient) UpdateBaseBranch(branch string) error {
+	return nil
+}
+
+// WorktreeExists は常にfalseを返す（モック実装）
+func (m *MockGitClient) WorktreeExists(worktreePath string) bool {
+	return false
+}

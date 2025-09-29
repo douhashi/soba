@@ -398,7 +398,7 @@ func TestDaemonService_ConfigureAndStartWatchers_WithNilClosedIssueCleanupServic
 
 			// IssueWatcherとPRWatcherを作成
 			watcher := NewIssueWatcher(mockGitHubClient, cfg)
-			prWatcher := NewPRWatcher(mockGitHubClient, cfg)
+			prWatcher := NewPRWatcher(mockGitHubClient, NewMockGitClient(), cfg)
 
 			// ロガーを設定（nilポインタエラーを防ぐため）
 			if watcher != nil {
@@ -817,7 +817,7 @@ func TestDaemonService_ClosedIssueCleanupServiceLogger(t *testing.T) {
 
 			// Create IssueWatcher and PRWatcher
 			watcher := NewIssueWatcher(mockGitHubClient, tt.cfg)
-			prWatcher := NewPRWatcher(mockGitHubClient, tt.cfg)
+			prWatcher := NewPRWatcher(mockGitHubClient, NewMockGitClient(), tt.cfg)
 
 			if watcher != nil {
 				watcher.logger = mockLogger
@@ -928,7 +928,7 @@ func TestDaemonService_ClosedIssueCleanupServiceStartupLog(t *testing.T) {
 
 			// Create IssueWatcher and PRWatcher
 			watcher := NewIssueWatcher(mockGitHubClient, tt.cfg)
-			prWatcher := NewPRWatcher(mockGitHubClient, tt.cfg)
+			prWatcher := NewPRWatcher(mockGitHubClient, NewMockGitClient(), tt.cfg)
 
 			if watcher != nil {
 				watcher.logger = mockLogger

@@ -15,7 +15,7 @@ type ServiceFactory interface {
 	CreateIssueProcessor(githubClient GitHubClientInterface, executor WorkflowExecutor) IssueProcessorInterface
 	CreateIssueWatcher(githubClient GitHubClientInterface, cfg *config.Config) IssueWatcher
 	CreateQueueManager(githubClient GitHubClientInterface, owner, repo string) interface{}
-	CreatePRWatcher(githubClient GitHubClientInterface, cfg *config.Config) PRWatcher
+	CreatePRWatcher(githubClient GitHubClientInterface, gitClient interface{}, cfg *config.Config) PRWatcher
 	CreateClosedIssueCleanupService(githubClient GitHubClientInterface, tmuxClient tmux.TmuxClient, owner, repo, sessionName string, enabled bool, interval time.Duration) ClosedIssueCleanupService
 	CreateDaemonServiceWithDependencies(workDir string, processor IssueProcessorInterface, watcher IssueWatcher, prWatcher PRWatcher, cleanupService ClosedIssueCleanupService, tmuxClient tmux.TmuxClient) DaemonService
 	CreateStatusService() StatusService
