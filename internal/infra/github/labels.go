@@ -266,5 +266,10 @@ func GetSobaLabels() []CreateLabelRequest {
 			Color:       "ff6347",
 			Description: "Claude applying requested changes",
 		},
+		{
+			Name:        "soba:lgtm",
+			Color:       "0e8a16",
+			Description: "Review approved, target for auto merge",
+		},
 	}
 }
