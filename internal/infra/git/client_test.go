@@ -496,8 +496,8 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 
 				// Add remote and push initial commit
 				runCommand(t, dir, "git", "remote", "add", "origin", remoteDir)
-				// We're already on main branch from createTestRepository
-				runCommand(t, dir, "git", "push", "-u", "origin", "main")
+				// Push current branch as main
+				runCommand(t, dir, "git", "push", "-u", "origin", "HEAD:main")
 
 				// Simulate remote changes by creating a new commit in another clone
 				cloneDir := t.TempDir()
@@ -676,23 +676,17 @@ func TestClient_WorktreeExists(t *testing.T) {
 func createTestRepository(t *testing.T, dir string) {
 	t.Helper()
 
-	// Initialize git repository
-	runCommand(t, dir, "git", "init")
+	// Initialize git repository with main as default branch
+	runCommand(t, dir, "git", "init", "-b", "main")
 
 	// Set Git configuration for CI environment
 	runCommand(t, dir, "git", "config", "user.email", "test@example.com")
 	runCommand(t, dir, "git", "config", "user.name", "Test User")
 
-	// Set default branch name to main
-	runCommand(t, dir, "git", "config", "init.defaultBranch", "main")
-
 	// Create initial commit
 	writeFile(t, filepath.Join(dir, "README.md"), "# Test Repository")
 	runCommand(t, dir, "git", "add", ".")
 	runCommand(t, dir, "git", "commit", "-m", "Initial commit")
-
-	// Ensure we're on main branch after initial commit
-	runCommand(t, dir, "git", "branch", "-m", "main")
 }
 
 func runCommand(t *testing.T, dir string, name string, args ...string) {
