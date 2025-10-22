@@ -571,10 +571,11 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 				// Set Git configuration for CI environment
 				runCommand(t, dir, "git", "config", "user.email", "test@example.com")
 				runCommand(t, dir, "git", "config", "user.name", "Test User")
-				runCommand(t, dir, "git", "checkout", "-b", "main")
+				runCommand(t, dir, "git", "config", "init.defaultBranch", "main")
 				writeFile(t, filepath.Join(dir, "README.md"), "# Test")
 				runCommand(t, dir, "git", "add", ".")
 				runCommand(t, dir, "git", "commit", "-m", "Initial commit")
+				runCommand(t, dir, "git", "branch", "-m", "main")
 			},
 			wantErr: false, // Should not fail if no remote
 		},
@@ -682,12 +683,16 @@ func createTestRepository(t *testing.T, dir string) {
 	runCommand(t, dir, "git", "config", "user.email", "test@example.com")
 	runCommand(t, dir, "git", "config", "user.name", "Test User")
 
-	runCommand(t, dir, "git", "checkout", "-b", "main")
+	// Set default branch name to main
+	runCommand(t, dir, "git", "config", "init.defaultBranch", "main")
 
 	// Create initial commit
 	writeFile(t, filepath.Join(dir, "README.md"), "# Test Repository")
 	runCommand(t, dir, "git", "add", ".")
 	runCommand(t, dir, "git", "commit", "-m", "Initial commit")
+
+	// Ensure we're on main branch after initial commit
+	runCommand(t, dir, "git", "branch", "-m", "main")
 }
 
 func runCommand(t *testing.T, dir string, name string, args ...string) {
