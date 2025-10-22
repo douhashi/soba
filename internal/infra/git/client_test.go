@@ -476,16 +476,73 @@ func TestClient_RemoveWorktree(t *testing.T) {
 
 func TestClient_UpdateBaseBranch(t *testing.T) {
 	tests := []struct {
-		name    string
-		branch  string
-		setup   func(t *testing.T, dir string)
-		wantErr bool
+		name         string
+		branch       string
+		setup        func(t *testing.T, dir string)
+		verifyResult func(t *testing.T, dir string) // Verify the branch was actually updated
+		wantErr      bool
 	}{
+		{
+			name:   "Update existing branch with fast-forward merge",
+			branch: "main",
+			setup: func(t *testing.T, dir string) {
+				// Create a local repository
+				createTestRepository(t, dir)
+
+				// Create a bare repository to act as remote
+				remoteDir := filepath.Join(t.TempDir(), "remote.git")
+				os.MkdirAll(remoteDir, 0755)
+				runCommand(t, remoteDir, "git", "init", "--bare")
+
+				// Add remote and push initial commit
+				runCommand(t, dir, "git", "remote", "add", "origin", remoteDir)
+				runCommand(t, dir, "git", "push", "-u", "origin", "main")
+
+				// Simulate remote changes by creating a new commit in another clone
+				cloneDir := t.TempDir()
+				runCommand(t, cloneDir, "git", "clone", remoteDir, ".")
+				runCommand(t, cloneDir, "git", "config", "user.email", "test@example.com")
+				runCommand(t, cloneDir, "git", "config", "user.name", "Test User")
+				writeFile(t, filepath.Join(cloneDir, "new-file.txt"), "new content")
+				runCommand(t, cloneDir, "git", "add", ".")
+				runCommand(t, cloneDir, "git", "commit", "-m", "Remote commit")
+				runCommand(t, cloneDir, "git", "push", "origin", "main")
+			},
+			verifyResult: func(t *testing.T, dir string) {
+				// Verify the new file exists after pull
+				if _, err := os.Stat(filepath.Join(dir, "new-file.txt")); os.IsNotExist(err) {
+					t.Error("Expected new-file.txt to exist after pull")
+				}
+			},
+			wantErr: false,
+		},
 		{
 			name:   "Update existing branch",
 			branch: "main",
 			setup: func(t *testing.T, dir string) {
 				createTestRepository(t, dir)
+			},
+			wantErr: false,
+		},
+		{
+			name:   "Update when on different branch",
+			branch: "main",
+			setup: func(t *testing.T, dir string) {
+				createTestRepository(t, dir)
+				// Create and switch to a different branch
+				runCommand(t, dir, "git", "checkout", "-b", "feature-branch")
+				writeFile(t, filepath.Join(dir, "feature.txt"), "feature content")
+				runCommand(t, dir, "git", "add", ".")
+				runCommand(t, dir, "git", "commit", "-m", "Feature commit")
+			},
+			verifyResult: func(t *testing.T, dir string) {
+				// Verify we're back on the feature branch
+				cmd := exec.Command("git", "-C", dir, "branch", "--show-current")
+				output, _ := cmd.Output()
+				currentBranch := strings.TrimSpace(string(output))
+				if currentBranch != "feature-branch" {
+					t.Errorf("Expected to be on feature-branch, but on %s", currentBranch)
+				}
 			},
 			wantErr: false,
 		},
@@ -540,6 +597,11 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 			err = client.UpdateBaseBranch(tt.branch)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("UpdateBaseBranch() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			// Verify result if function is provided
+			if err == nil && tt.verifyResult != nil {
+				tt.verifyResult(t, tmpDir)
 			}
 		})
 	}

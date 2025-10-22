@@ -603,6 +603,111 @@ func TestGenerateSessionName(t *testing.T) {
 	}
 }
 
+func TestWorkflowExecutor_PrepareWorkspaceWithBaseBranchUpdate(t *testing.T) {
+	// この統合テストは、各フェーズ実行時にワークスペース準備を通じて
+	// ベースブランチが最新化されることを確認します
+	tests := []struct {
+		name        string
+		phase       domain.Phase
+		issueNumber int
+		setupMocks  func(*MockTmuxClient, *MockWorkspaceManager, *MockIssueProcessorUpdater)
+		wantErr     bool
+	}{
+		{
+			name:        "Plan phase prepares workspace with base branch update",
+			phase:       domain.PhasePlan,
+			issueNumber: 201,
+			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
+				processor.On("Configure", mock.Anything).Return(nil)
+				processor.On("UpdateLabels", mock.Anything, 201, domain.LabelQueued, domain.LabelPlanning).Return(nil)
+				// PrepareWorkspaceが呼ばれることで、内部的にUpdateBaseBranchが実行される
+				workspace.On("PrepareWorkspace", 201).Return(nil)
+				tmux.On("SessionExists", "soba-test-repo").Return(true)
+				tmux.On("WindowExists", "soba-test-repo", "issue-201").Return(false, nil)
+				tmux.On("CreateWindow", "soba-test-repo", "issue-201").Return(nil)
+				tmux.On("GetLastPaneIndex", "soba-test-repo", "issue-201").Return(0, nil)
+				tmux.On("SendCommand", "soba-test-repo", "issue-201", 0, mock.Anything).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:        "Implement phase prepares workspace with base branch update",
+			phase:       domain.PhaseImplement,
+			issueNumber: 202,
+			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
+				processor.On("Configure", mock.Anything).Return(nil)
+				processor.On("UpdateLabels", mock.Anything, 202, domain.LabelReady, domain.LabelDoing).Return(nil)
+				// PrepareWorkspaceが呼ばれることで、内部的にUpdateBaseBranchが実行される
+				workspace.On("PrepareWorkspace", 202).Return(nil)
+				tmux.On("SessionExists", "soba-test-repo").Return(true)
+				tmux.On("WindowExists", "soba-test-repo", "issue-202").Return(false, nil)
+				tmux.On("CreateWindow", "soba-test-repo", "issue-202").Return(nil)
+				tmux.On("GetLastPaneIndex", "soba-test-repo", "issue-202").Return(0, nil)
+				tmux.On("SendCommand", "soba-test-repo", "issue-202", 0, mock.Anything).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:        "Revise phase prepares workspace with base branch update",
+			phase:       domain.PhaseRevise,
+			issueNumber: 203,
+			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
+				processor.On("Configure", mock.Anything).Return(nil)
+				processor.On("UpdateLabels", mock.Anything, 203, domain.LabelRequiresChanges, domain.LabelRevising).Return(nil)
+				// PrepareWorkspaceが呼ばれることで、内部的にUpdateBaseBranchが実行される
+				workspace.On("PrepareWorkspace", 203).Return(nil)
+				tmux.On("SessionExists", "soba-test-repo").Return(true)
+				tmux.On("WindowExists", "soba-test-repo", "issue-203").Return(false, nil)
+				tmux.On("CreateWindow", "soba-test-repo", "issue-203").Return(nil)
+				tmux.On("GetLastPaneIndex", "soba-test-repo", "issue-203").Return(0, nil)
+				tmux.On("SendCommand", "soba-test-repo", "issue-203", 0, mock.Anything).Return(nil)
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockTmux := new(MockTmuxClient)
+			mockWorkspace := new(MockWorkspaceManager)
+			mockProcessor := new(MockIssueProcessorUpdater)
+
+			tt.setupMocks(mockTmux, mockWorkspace, mockProcessor)
+
+			executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor, logging.NewMockLogger())
+
+			cfg := &config.Config{
+				Git: config.GitConfig{
+					WorktreeBasePath: ".git/soba/worktrees",
+					BaseBranch:       "main",
+				},
+				GitHub: config.GitHubConfig{
+					Repository: "test/repo",
+				},
+				Phase: config.PhaseConfig{
+					Plan:      config.PhaseCommand{Command: "echo", Parameter: "Planning"},
+					Implement: config.PhaseCommand{Command: "echo", Parameter: "Implementing"},
+					Revise:    config.PhaseCommand{Command: "echo", Parameter: "Revising"},
+				},
+			}
+
+			err := executor.ExecutePhase(context.Background(), cfg, tt.issueNumber, tt.phase)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			// PrepareWorkspaceが呼ばれたことを確認
+			// これにより、内部的にUpdateBaseBranchが呼ばれることが保証される
+			mockWorkspace.AssertCalled(t, "PrepareWorkspace", tt.issueNumber)
+			mockTmux.AssertExpectations(t)
+			mockProcessor.AssertExpectations(t)
+		})
+	}
+}
+
 func TestWorkflowExecutor_setupTmuxSession(t *testing.T) {
 	tests := []struct {
 		name          string
