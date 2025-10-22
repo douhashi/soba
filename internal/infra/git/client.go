@@ -98,32 +98,86 @@ func (c *Client) RemoveWorktree(worktreePath string) error {
 // UpdateBaseBranch updates the specified branch to the latest remote version
 func (c *Client) UpdateBaseBranch(branch string) error {
 	if branch == "" {
-		return NewGitError("fetch", "", "branch name is required", nil)
+		return NewGitError("pull", "", "branch name is required", nil)
 	}
 
 	// Check if branch exists
 	cmd := exec.Command("git", "-C", c.workDir, "rev-parse", "--verify", branch)
 	if err := cmd.Run(); err != nil {
-		return NewGitError("fetch", branch, "branch not found", err)
+		return NewGitError("pull", branch, "branch not found", err)
 	}
 
 	// Check if remote exists
 	cmd = exec.Command("git", "-C", c.workDir, "remote")
 	remoteOutput, err := cmd.Output()
 	if err != nil || len(strings.TrimSpace(string(remoteOutput))) == 0 {
-		// No remote configured, skip fetch (for local testing)
+		// No remote configured, skip pull (for local testing)
 		return nil
 	}
 
-	// Fetch latest changes
-	cmd = exec.Command("git", "-C", c.workDir, "fetch", "origin", fmt.Sprintf("%s:%s", branch, branch))
-	_, err = cmd.CombinedOutput()
+	// Get current branch
+	cmd = exec.Command("git", "-C", c.workDir, "branch", "--show-current")
+	currentBranchOutput, err := cmd.Output()
 	if err != nil {
-		// Try simple fetch without force update
-		cmd = exec.Command("git", "-C", c.workDir, "fetch")
-		if fetchErr := cmd.Run(); fetchErr != nil {
-			// Log error but don't fail (for testing environments)
-			return nil
+		return NewGitError("pull", branch, "failed to get current branch", err)
+	}
+	currentBranch := strings.TrimSpace(string(currentBranchOutput))
+
+	// If we're not on the target branch, switch to it
+	needSwitch := currentBranch != branch
+	if needSwitch {
+		// Check for uncommitted changes before switching
+		cmd = exec.Command("git", "-C", c.workDir, "status", "--porcelain")
+		statusOutput, err := cmd.Output()
+		if err != nil {
+			return NewGitError("pull", branch, "failed to check working tree status", err)
+		}
+		if len(strings.TrimSpace(string(statusOutput))) > 0 {
+			// Stash changes if any
+			cmd = exec.Command("git", "-C", c.workDir, "stash", "push", "-m", "soba: auto-stash before updating base branch")
+			if err := cmd.Run(); err != nil {
+				return NewGitError("pull", branch, "failed to stash changes", err)
+			}
+			defer func() {
+				// Pop stash after switching back
+				cmd := exec.Command("git", "-C", c.workDir, "stash", "pop")
+				cmd.Run() // Ignore error as stash might be empty
+			}()
+		}
+
+		// Switch to target branch
+		cmd = exec.Command("git", "-C", c.workDir, "checkout", branch)
+		if err := cmd.Run(); err != nil {
+			return NewGitError("pull", branch, "failed to checkout branch", err)
+		}
+	}
+
+	// Pull latest changes with fast-forward only
+	cmd = exec.Command("git", "-C", c.workDir, "pull", "--ff-only", "origin", branch)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// If pull failed, try to provide meaningful error
+		if strings.Contains(string(output), "not possible to fast-forward") {
+			if needSwitch {
+				// Switch back to original branch
+				cmd = exec.Command("git", "-C", c.workDir, "checkout", currentBranch)
+				cmd.Run()
+			}
+			return NewGitError("pull", branch, "cannot fast-forward, manual merge required", err)
+		}
+		// For other errors, still try to switch back if needed
+		if needSwitch {
+			cmd = exec.Command("git", "-C", c.workDir, "checkout", currentBranch)
+			cmd.Run()
+		}
+		return NewGitError("pull", branch, string(output), err)
+	}
+
+	// Switch back to original branch if we switched
+	if needSwitch {
+		cmd = exec.Command("git", "-C", c.workDir, "checkout", currentBranch)
+		if err := cmd.Run(); err != nil {
+			return NewGitError("pull", branch, "failed to switch back to original branch", err)
 		}
 	}
 

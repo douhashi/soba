@@ -287,3 +287,29 @@ func TestGitWorkspaceManager_WithCustomBaseBranch(t *testing.T) {
 	require.NoError(t, err)
 	mockClient.AssertExpectations(t)
 }
+
+func TestGitWorkspaceManager_PrepareWorkspace_UpdatesBaseBranch(t *testing.T) {
+	// This test verifies that PrepareWorkspace always calls UpdateBaseBranch
+	// before creating a new worktree, ensuring we have the latest code
+	cfg := &config.Config{
+		Git: config.GitConfig{
+			WorktreeBasePath: ".git/soba/worktrees",
+			BaseBranch:       "main",
+		},
+	}
+	mockClient := new(mockGitClient)
+
+	expectedPath := filepath.Join(".git/soba/worktrees", "issue-100")
+
+	// Setup expectations: UpdateBaseBranch must be called before CreateWorktree
+	mockClient.On("WorktreeExists", expectedPath).Return(false)
+	mockClient.On("UpdateBaseBranch", "main").Return(nil).Once()
+	mockClient.On("CreateWorktree", expectedPath, "soba/100", "main").Return(nil)
+
+	manager := NewGitWorkspaceManager(cfg, mockClient)
+	err := manager.PrepareWorkspace(100)
+
+	require.NoError(t, err)
+	// Verify that UpdateBaseBranch was called exactly once
+	mockClient.AssertExpectations(t)
+}
