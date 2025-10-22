@@ -501,14 +501,13 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 
 				// Simulate remote changes by creating a new commit in another clone
 				cloneDir := t.TempDir()
-				runCommand(t, cloneDir, "git", "clone", remoteDir, ".")
+				runCommand(t, cloneDir, "git", "clone", "-b", "main", remoteDir, ".")
 				runCommand(t, cloneDir, "git", "config", "user.email", "test@example.com")
 				runCommand(t, cloneDir, "git", "config", "user.name", "Test User")
 				writeFile(t, filepath.Join(cloneDir, "new-file.txt"), "new content")
 				runCommand(t, cloneDir, "git", "add", ".")
 				runCommand(t, cloneDir, "git", "commit", "-m", "Remote commit")
-				// Push using HEAD to avoid branch name issues
-				runCommand(t, cloneDir, "git", "push", "origin", "HEAD:main")
+				runCommand(t, cloneDir, "git", "push", "origin", "main")
 			},
 			verifyResult: func(t *testing.T, dir string) {
 				// Verify the new file exists after pull
