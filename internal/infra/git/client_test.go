@@ -507,7 +507,8 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 				writeFile(t, filepath.Join(cloneDir, "new-file.txt"), "new content")
 				runCommand(t, cloneDir, "git", "add", ".")
 				runCommand(t, cloneDir, "git", "commit", "-m", "Remote commit")
-				runCommand(t, cloneDir, "git", "push", "origin", "main")
+				// Push using HEAD to avoid branch name issues
+				runCommand(t, cloneDir, "git", "push", "origin", "HEAD:main")
 			},
 			verifyResult: func(t *testing.T, dir string) {
 				// Verify the new file exists after pull
