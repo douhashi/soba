@@ -496,6 +496,8 @@ func TestClient_UpdateBaseBranch(t *testing.T) {
 
 				// Add remote and push initial commit
 				runCommand(t, dir, "git", "remote", "add", "origin", remoteDir)
+				// Ensure we are on main branch before pushing
+				runCommand(t, dir, "git", "checkout", "main")
 				runCommand(t, dir, "git", "push", "-u", "origin", "main")
 
 				// Simulate remote changes by creating a new commit in another clone
