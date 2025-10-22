@@ -687,6 +687,17 @@ func createTestRepository(t *testing.T, dir string) {
 	writeFile(t, filepath.Join(dir, "README.md"), "# Test Repository")
 	runCommand(t, dir, "git", "add", ".")
 	runCommand(t, dir, "git", "commit", "-m", "Initial commit")
+
+	// Ensure the branch is named "main" (some Git versions might not respect -b flag)
+	// Check current branch and rename if necessary
+	cmd := exec.Command("git", "-C", dir, "branch", "--show-current")
+	output, err := cmd.Output()
+	if err == nil {
+		currentBranch := strings.TrimSpace(string(output))
+		if currentBranch != "main" && currentBranch != "" {
+			runCommand(t, dir, "git", "branch", "-m", currentBranch, "main")
+		}
+	}
 }
 
 func runCommand(t *testing.T, dir string, name string, args ...string) {
