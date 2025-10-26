@@ -33,15 +33,15 @@ func newInitCmd() *cobra.Command {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
-	err := runInitWithClient(context.Background(), args, nil)
+	err := runInitWithGhCommand(context.Background(), args, nil)
 	if err == nil {
 		cmd.Printf("Successfully created config file\n")
 	}
 	return err
 }
 
-// runInitWithClient allows dependency injection for testing
-func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabelsClient) error {
+// runInitWithGhCommand allows dependency injection for testing
+func runInitWithGhCommand(ctx context.Context, _ []string, ghCmd GhCommandInterface) error {
 	log := logging.NewMockLogger()
 
 	// Get current directory
@@ -115,7 +115,7 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	log.Info(ctx, "Successfully created config file", logging.Field{Key: "path", Value: configPath})
 
 	// Try to create GitHub labels if repository is configured
-	if err := createGitHubLabelsIfConfigured(ctx, configPath, gitHubClient, log); err != nil {
+	if err := createGitHubLabelsIfConfigured(ctx, configPath, ghCmd, log); err != nil {
 		// Log the error but don't fail the init command
 		log.Warn(ctx, "Failed to create GitHub labels", logging.Field{Key: "error", Value: err.Error()})
 	}
@@ -129,14 +129,15 @@ func runInitWithClient(ctx context.Context, _ []string, gitHubClient GitHubLabel
 	return nil
 }
 
-// GitHubLabelsClient はGitHubラベル操作のインターフェース
-type GitHubLabelsClient interface {
-	CreateLabel(ctx context.Context, owner, repo string, request github.CreateLabelRequest) (*github.Label, error)
-	ListLabels(ctx context.Context, owner, repo string) ([]github.Label, error)
+// GhCommandInterface はghコマンド操作のインターフェース
+type GhCommandInterface interface {
+	IsAvailable() bool
+	IsAuthenticated(ctx context.Context) (bool, error)
+	CreateSobaLabels(ctx context.Context, owner, repo string) (created int, skipped int, err error)
 }
 
 // createGitHubLabelsIfConfigured はGitHubリポジトリが設定されている場合にラベルを作成する
-func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, client GitHubLabelsClient, log logging.Logger) error {
+func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, ghCmd GhCommandInterface, log logging.Logger) error {
 	// 設定ファイルを読み込む
 	cfg, err := config.Load(configPath)
 	if err != nil {
@@ -157,61 +158,39 @@ func createGitHubLabelsIfConfigured(ctx context.Context, configPath string, clie
 	}
 	owner, repo := parts[0], parts[1]
 
-	// クライアントが提供されていない場合は作成
-	if client == nil {
-		tokenProvider := github.NewDefaultTokenProvider()
-		githubClient, clientErr := github.NewClient(tokenProvider, &github.ClientOptions{
-			Logger: log,
-		})
-		if clientErr != nil {
-			return errors.WrapInternal(clientErr, "failed to create GitHub client")
-		}
-		client = githubClient
+	// ghコマンドが提供されていない場合は作成
+	if ghCmd == nil {
+		ghCmd = github.NewGhCommandWithLogger(log)
+	}
+
+	// ghコマンドが利用可能かチェック
+	if !ghCmd.IsAvailable() {
+		log.Warn(ctx, "gh command not found. Please install GitHub CLI to create labels")
+		return errors.NewValidationError("gh command not found")
+	}
+
+	// 認証状態をチェック
+	authenticated, err := ghCmd.IsAuthenticated(ctx)
+	if err != nil {
+		return errors.WrapInternal(err, "failed to check authentication")
+	}
+	if !authenticated {
+		log.Warn(ctx, "gh command not authenticated. Please run 'gh auth login' first")
+		return errors.NewValidationError("gh command not authenticated")
 	}
 
 	log.Info(ctx, "Creating GitHub labels", logging.Field{Key: "repository", Value: cfg.GitHub.Repository})
 
-	// 既存のラベルを取得
-	existingLabels, err := client.ListLabels(ctx, owner, repo)
-	if err != nil {
-		return errors.WrapInternal(err, "failed to list existing labels")
-	}
-
-	// 既存ラベル名のセットを作成
-	existingLabelNames := make(map[string]bool)
-	for _, label := range existingLabels {
-		existingLabelNames[label.Name] = true
-	}
-
 	// sobaラベルを作成
-	sobaLabels := github.GetSobaLabels()
-	createdCount := 0
-	skippedCount := 0
-
-	for _, labelRequest := range sobaLabels {
-		if existingLabelNames[labelRequest.Name] {
-			log.Debug(ctx, "Label already exists, skipping", logging.Field{Key: "label", Value: labelRequest.Name})
-			skippedCount++
-			continue
-		}
-
-		_, err := client.CreateLabel(ctx, owner, repo, labelRequest)
-		if err != nil {
-			log.Warn(ctx, "Failed to create label",
-				logging.Field{Key: "label", Value: labelRequest.Name},
-				logging.Field{Key: "error", Value: err.Error()},
-			)
-			continue
-		}
-
-		log.Debug(ctx, "Created label", logging.Field{Key: "label", Value: labelRequest.Name})
-		createdCount++
+	created, skipped, err := ghCmd.CreateSobaLabels(ctx, owner, repo)
+	if err != nil {
+		return errors.WrapInternal(err, "failed to create labels")
 	}
 
 	log.Info(ctx, "GitHub labels creation completed",
-		logging.Field{Key: "created", Value: createdCount},
-		logging.Field{Key: "skipped", Value: skippedCount},
-		logging.Field{Key: "total", Value: len(sobaLabels)},
+		logging.Field{Key: "created", Value: created},
+		logging.Field{Key: "skipped", Value: skipped},
+		logging.Field{Key: "total", Value: 11},
 	)
 
 	return nil

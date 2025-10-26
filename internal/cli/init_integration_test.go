@@ -41,7 +41,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
 		// Execute init
-		err = runInitWithClient(context.Background(), []string{}, nil)
+		err = runInitWithGhCommand(context.Background(), []string{}, nil)
 		require.NoError(t, err)
 
 		// Verify config file was created
@@ -83,7 +83,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
 		// Execute init (templates are now embedded)
-		err = runInitWithClient(context.Background(), []string{}, nil)
+		err = runInitWithGhCommand(context.Background(), []string{}, nil)
 		require.NoError(t, err)
 
 		// Verify config file was created
@@ -139,7 +139,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		require.NoError(t, os.WriteFile(existingFile, existingContent, 0644))
 
 		// Execute init (templates are now embedded)
-		err = runInitWithClient(context.Background(), []string{}, nil)
+		err = runInitWithGhCommand(context.Background(), []string{}, nil)
 		require.NoError(t, err)
 
 		// Verify existing file was not overwritten
@@ -182,7 +182,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
 		// Execute init
-		err = runInitWithClient(context.Background(), []string{}, nil)
+		err = runInitWithGhCommand(context.Background(), []string{}, nil)
 		require.NoError(t, err)
 
 		// Verify config file was created
@@ -219,7 +219,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
 
 		// Execute init - should fail without remote
-		err = runInitWithClient(context.Background(), []string{}, nil)
+		err = runInitWithGhCommand(context.Background(), []string{}, nil)
 
 		// Assert that it fails with proper error message
 		require.Error(t, err)
@@ -238,7 +238,7 @@ func TestInitWithGitRepository(t *testing.T) {
 		require.NoError(t, os.Chdir(tempDir))
 
 		// Execute init
-		err := runInitWithClient(context.Background(), []string{}, nil)
+		err := runInitWithGhCommand(context.Background(), []string{}, nil)
 
 		// Should fail with validation error
 		assert.Error(t, err)
