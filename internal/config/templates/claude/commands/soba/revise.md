@@ -40,11 +40,7 @@ Implement fixes based on review comments:
 - Remove unnecessary diffs
 
 ### 4. Run Tests
-
-```bash
-# Run tests (recommended)
-make test  # Timeout 600000
-```
+  - Run full test suite (required) # Timeout 600000
 
 ### 5. Commit Changes
 
