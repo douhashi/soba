@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/douhashi/soba/internal/config"
-	"github.com/douhashi/soba/internal/infra/github"
 )
 
 func TestInitCommand(t *testing.T) {
@@ -206,27 +205,22 @@ func TestInitCommand(t *testing.T) {
 		output, err = gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
-		// Mock GitHub client
-		mockClient := &MockGitHubClient{
-			CreateLabelCalls: []CreateLabelCall{},
-			ListLabelsCalls:  []ListLabelsCall{},
+		// Mock gh command
+		mockCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
 		}
 
-		// Execute with mock client (this will create config first)
-		err = runInitWithClient(context.Background(), []string{}, mockClient)
+		// Execute with mock command
+		err = runInitWithGhCommand(context.Background(), []string{}, mockCmd)
 
 		// Assert
 		assert.NoError(t, err)
-
-		// Should have attempted to create labels for detected repository
-		assert.GreaterOrEqual(t, len(mockClient.ListLabelsCalls), 1, "Should call ListLabels at least once")
-
-		if len(mockClient.ListLabelsCalls) > 0 {
-			// Verify first call is to list existing labels
-			listCall := mockClient.ListLabelsCalls[0]
-			assert.Equal(t, "test-owner", listCall.Owner)
-			assert.Equal(t, "test-repo", listCall.Repo)
-		}
+		assert.True(t, mockCmd.createCalled)
+		assert.Equal(t, "test-owner", mockCmd.lastOwner)
+		assert.Equal(t, "test-repo", mockCmd.lastRepo)
 	})
 
 	t.Run("should require git remote to be configured", func(t *testing.T) {
@@ -256,7 +250,7 @@ func TestInitCommand(t *testing.T) {
 		assert.Contains(t, err.Error(), "git remote")
 	})
 
-	t.Run("should handle GitHub API errors gracefully", func(t *testing.T) {
+	t.Run("should handle gh command not available", func(t *testing.T) {
 		// Setup
 		tempDir := t.TempDir()
 		oldDir, _ := os.Getwd()
@@ -273,16 +267,46 @@ func TestInitCommand(t *testing.T) {
 		output, err = gitCmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add git remote: %s", string(output))
 
-		// Mock GitHub client that returns errors
-		mockClient := &MockGitHubClient{
-			ListLabelsError: assert.AnError,
+		// Mock gh command that is not available
+		mockCmd := &MockGhCommand{
+			available: false,
 		}
 
-		// Execute with mock client
-		err = runInitWithClient(context.Background(), []string{}, mockClient)
+		// Execute with mock command
+		err = runInitWithGhCommand(context.Background(), []string{}, mockCmd)
 
 		// Assert - should not fail completely, but log the error
-		assert.NoError(t, err, "Init should not fail due to GitHub API errors")
+		assert.NoError(t, err, "Init should not fail due to gh not being available")
+	})
+
+	t.Run("should handle gh command not authenticated", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository with remote
+		gitCmd := exec.Command("git", "init")
+		output, err := gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Add remote origin
+		gitCmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = gitCmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add git remote: %s", string(output))
+
+		// Mock gh command that is not authenticated
+		mockCmd := &MockGhCommand{
+			available:     true,
+			authenticated: false,
+		}
+
+		// Execute with mock command
+		err = runInitWithGhCommand(context.Background(), []string{}, mockCmd)
+
+		// Assert - should not fail completely, but log the error
+		assert.NoError(t, err, "Init should not fail due to gh not being authenticated")
 	})
 
 	t.Run("should fail when no git remote is configured", func(t *testing.T) {
@@ -349,56 +373,39 @@ func TestInitCommand(t *testing.T) {
 	})
 }
 
-// Mock GitHub client for testing
-type MockGitHubClient struct {
-	CreateLabelCalls []CreateLabelCall
-	ListLabelsCalls  []ListLabelsCall
-	CreateLabelError error
-	ListLabelsError  error
-	ExistingLabels   []github.Label
+// Mock gh command for testing
+type MockGhCommand struct {
+	available     bool
+	authenticated bool
+	authError     error
+	created       int
+	skipped       int
+	createError   error
+	createCalled  bool
+	lastOwner     string
+	lastRepo      string
 }
 
-type CreateLabelCall struct {
-	Owner   string
-	Repo    string
-	Request github.CreateLabelRequest
+func (m *MockGhCommand) IsAvailable() bool {
+	return m.available
 }
 
-type ListLabelsCall struct {
-	Owner string
-	Repo  string
-}
-
-func (m *MockGitHubClient) CreateLabel(ctx context.Context, owner, repo string, request github.CreateLabelRequest) (*github.Label, error) {
-	m.CreateLabelCalls = append(m.CreateLabelCalls, CreateLabelCall{
-		Owner:   owner,
-		Repo:    repo,
-		Request: request,
-	})
-
-	if m.CreateLabelError != nil {
-		return nil, m.CreateLabelError
+func (m *MockGhCommand) IsAuthenticated(ctx context.Context) (bool, error) {
+	if m.authError != nil {
+		return false, m.authError
 	}
-
-	return &github.Label{
-		ID:          int64(len(m.CreateLabelCalls)),
-		Name:        request.Name,
-		Color:       request.Color,
-		Description: request.Description,
-	}, nil
+	return m.authenticated, nil
 }
 
-func (m *MockGitHubClient) ListLabels(ctx context.Context, owner, repo string) ([]github.Label, error) {
-	m.ListLabelsCalls = append(m.ListLabelsCalls, ListLabelsCall{
-		Owner: owner,
-		Repo:  repo,
-	})
+func (m *MockGhCommand) CreateSobaLabels(ctx context.Context, owner, repo string) (created int, skipped int, err error) {
+	m.createCalled = true
+	m.lastOwner = owner
+	m.lastRepo = repo
 
-	if m.ListLabelsError != nil {
-		return nil, m.ListLabelsError
+	if m.createError != nil {
+		return 0, 0, m.createError
 	}
-
-	return m.ExistingLabels, nil
+	return m.created, m.skipped, nil
 }
 
 func TestCopyClaudeCommandTemplates(t *testing.T) {
