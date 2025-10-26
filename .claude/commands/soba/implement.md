@@ -47,11 +47,7 @@ Proceed with TDD development based on implementation plan and create Pull Reques
    - Meaningful commit messages
 
 4. **Run Tests**
-   ```bash
-   # Run tests (recommended)
-   make test
-   ```
-   - Run full test suite (required)
+   - Run full test suite (required) # Timeout 600000
 
 5. **Create PR Template**
    - Create `./.tmp/pull-request-<number>.md`
