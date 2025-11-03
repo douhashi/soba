@@ -39,7 +39,7 @@ func (m *mockGitClient) WorktreeExists(worktreePath string) bool {
 func TestNewGitWorkspaceManager(t *testing.T) {
 	cfg := &config.Config{
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 			BaseBranch:       "main",
 		},
 	}
@@ -60,7 +60,7 @@ func TestGitWorkspaceManager_PrepareWorkspace(t *testing.T) {
 			name:        "Successfully prepare new workspace",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(false)
 				mc.On("UpdateBaseBranch", "main").Return(nil)
 				mc.On("CreateWorktree", expectedPath, "soba/33", "main").Return(nil)
@@ -71,7 +71,7 @@ func TestGitWorkspaceManager_PrepareWorkspace(t *testing.T) {
 			name:        "Workspace already exists",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(true)
 			},
 			wantErr: false,
@@ -80,7 +80,7 @@ func TestGitWorkspaceManager_PrepareWorkspace(t *testing.T) {
 			name:        "Failed to update base branch",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(false)
 				mc.On("UpdateBaseBranch", "main").Return(assert.AnError)
 			},
@@ -90,7 +90,7 @@ func TestGitWorkspaceManager_PrepareWorkspace(t *testing.T) {
 			name:        "Failed to create worktree",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(false)
 				mc.On("UpdateBaseBranch", "main").Return(nil)
 				mc.On("CreateWorktree", expectedPath, "soba/33", "main").Return(assert.AnError)
@@ -109,7 +109,7 @@ func TestGitWorkspaceManager_PrepareWorkspace(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
 				Git: config.GitConfig{
-					WorktreeBasePath: ".git/soba/worktrees",
+					WorktreeBasePath: "/tmp/soba/worktrees",
 					BaseBranch:       "main",
 				},
 			}
@@ -140,7 +140,7 @@ func TestGitWorkspaceManager_CleanupWorkspace(t *testing.T) {
 			name:        "Successfully cleanup workspace",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(true)
 				mc.On("RemoveWorktree", expectedPath).Return(nil)
 			},
@@ -150,7 +150,7 @@ func TestGitWorkspaceManager_CleanupWorkspace(t *testing.T) {
 			name:        "Workspace does not exist",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(false)
 			},
 			wantErr: false,
@@ -159,7 +159,7 @@ func TestGitWorkspaceManager_CleanupWorkspace(t *testing.T) {
 			name:        "Failed to remove worktree",
 			issueNumber: 33,
 			setupMocks: func(mc *mockGitClient) {
-				expectedPath := filepath.Join(".git/soba/worktrees", "issue-33")
+				expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-33")
 				mc.On("WorktreeExists", expectedPath).Return(true)
 				mc.On("RemoveWorktree", expectedPath).Return(assert.AnError)
 			},
@@ -177,7 +177,7 @@ func TestGitWorkspaceManager_CleanupWorkspace(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
 				Git: config.GitConfig{
-					WorktreeBasePath: ".git/soba/worktrees",
+					WorktreeBasePath: "/tmp/soba/worktrees",
 					BaseBranch:       "main",
 				},
 			}
@@ -200,7 +200,7 @@ func TestGitWorkspaceManager_CleanupWorkspace(t *testing.T) {
 func TestGitWorkspaceManager_GetWorkspacePath(t *testing.T) {
 	cfg := &config.Config{
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 			BaseBranch:       "main",
 		},
 	}
@@ -215,12 +215,12 @@ func TestGitWorkspaceManager_GetWorkspacePath(t *testing.T) {
 		{
 			name:        "Valid issue number",
 			issueNumber: 33,
-			want:        filepath.Join(".git/soba/worktrees", "issue-33"),
+			want:        filepath.Join("/tmp/soba/worktrees", "issue-33"),
 		},
 		{
 			name:        "Large issue number",
 			issueNumber: 999,
-			want:        filepath.Join(".git/soba/worktrees", "issue-999"),
+			want:        filepath.Join("/tmp/soba/worktrees", "issue-999"),
 		},
 	}
 
@@ -235,7 +235,7 @@ func TestGitWorkspaceManager_GetWorkspacePath(t *testing.T) {
 func TestGitWorkspaceManager_GetBranchName(t *testing.T) {
 	cfg := &config.Config{
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 			BaseBranch:       "main",
 		},
 	}
@@ -270,13 +270,13 @@ func TestGitWorkspaceManager_GetBranchName(t *testing.T) {
 func TestGitWorkspaceManager_WithCustomBaseBranch(t *testing.T) {
 	cfg := &config.Config{
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 			BaseBranch:       "develop",
 		},
 	}
 	mockClient := new(mockGitClient)
 
-	expectedPath := filepath.Join(".git/soba/worktrees", "issue-42")
+	expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-42")
 	mockClient.On("WorktreeExists", expectedPath).Return(false)
 	mockClient.On("UpdateBaseBranch", "develop").Return(nil)
 	mockClient.On("CreateWorktree", expectedPath, "soba/42", "develop").Return(nil)
@@ -293,13 +293,13 @@ func TestGitWorkspaceManager_PrepareWorkspace_UpdatesBaseBranch(t *testing.T) {
 	// before creating a new worktree, ensuring we have the latest code
 	cfg := &config.Config{
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 			BaseBranch:       "main",
 		},
 	}
 	mockClient := new(mockGitClient)
 
-	expectedPath := filepath.Join(".git/soba/worktrees", "issue-100")
+	expectedPath := filepath.Join("/tmp/soba/worktrees", "issue-100")
 
 	// Setup expectations: UpdateBaseBranch must be called before CreateWorktree
 	mockClient.On("WorktreeExists", expectedPath).Return(false)

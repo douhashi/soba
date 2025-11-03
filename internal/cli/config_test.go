@@ -44,7 +44,7 @@ func TestRunConfig_Success(t *testing.T) {
 			NotificationsEnabled: false,
 		},
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 		},
 		Phase: config.PhaseConfig{
 			Plan: config.PhaseCommand{
@@ -109,7 +109,7 @@ log:
 	assert.NotNil(t, cfg)
 	// Verify defaults are set
 	assert.Equal(t, 20, cfg.Workflow.Interval)
-	assert.Equal(t, ".git/soba/worktrees", cfg.Git.WorktreeBasePath)
+	assert.Equal(t, "/tmp/soba/worktrees", cfg.Git.WorktreeBasePath)
 }
 
 func TestRunConfig_InvalidYAML(t *testing.T) {

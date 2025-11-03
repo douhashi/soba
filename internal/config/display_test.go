@@ -119,7 +119,7 @@ func TestDisplayConfig(t *testing.T) {
 			NotificationsEnabled: true,
 		},
 		Git: GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 		},
 		Phase: PhaseConfig{
 			Plan: PhaseCommand{
@@ -142,7 +142,7 @@ func TestDisplayConfig(t *testing.T) {
 	assert.Contains(t, output, "repository: test/repo")
 	assert.Contains(t, output, "interval: 30")
 	assert.Contains(t, output, "use_tmux: true")
-	assert.Contains(t, output, "worktree_base_path: .git/soba/worktrees")
+	assert.Contains(t, output, "worktree_base_path: /tmp/soba/worktrees")
 
 	// YAML形式であることを確認
 	lines := strings.Split(output, "\n")

@@ -44,7 +44,7 @@ func TestGenerateTemplate(t *testing.T) {
 		assert.Contains(t, template, "tmux_command_delay: 3")
 		assert.Contains(t, template, "notifications_enabled: false")
 		assert.NotContains(t, template, "setup_workspace")
-		assert.Contains(t, template, "worktree_base_path: .git/soba/worktrees")
+		assert.Contains(t, template, "worktree_base_path: /tmp/soba/worktrees")
 	})
 
 	t.Run("should include environment variable placeholders", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestGenerateTemplate(t *testing.T) {
 		assert.Equal(t, 300, config.Workflow.ClosedIssueCleanupInterval)
 		assert.Equal(t, 3, config.Workflow.TmuxCommandDelay)
 		assert.False(t, config.Slack.NotificationsEnabled)
-		assert.Equal(t, ".git/soba/worktrees", config.Git.WorktreeBasePath)
+		assert.Equal(t, "/tmp/soba/worktrees", config.Git.WorktreeBasePath)
 
 		// Verify phase commands
 		assert.NotNil(t, config.Phase)
