@@ -63,7 +63,7 @@ func TestPhaseDefinitions(t *testing.T) {
 			expectedExecution: domain.LabelReviewing,
 			expectedType:      domain.ExecutionTypeCommand,
 			expectedPane:      true,
-			expectedWorktree:  false,
+			expectedWorktree:  true,
 			expectedCompletions: map[string]bool{
 				domain.LabelDone:            true,
 				domain.LabelRequiresChanges: true,

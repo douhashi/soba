@@ -112,7 +112,7 @@ var PhaseDefinitions = map[string]*PhaseDefinition{
 		ExecutionLabel:   LabelReviewing,
 		ExecutionType:    ExecutionTypeCommand,
 		RequiresPane:     true,
-		RequiresWorktree: false,
+		RequiresWorktree: true,
 		CompletionLabels: map[string]NextAction{
 			LabelDone: { // レビュー承認
 				RemoveLabel:    LabelReviewing,
