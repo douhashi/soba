@@ -181,14 +181,32 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:         "Error when updating labels",
+			name:         "Execute review phase with worktree",
 			issueNumber:  999,
 			phase:        domain.PhaseReview,
 			currentLabel: domain.LabelReviewRequested,
 			nextLabel:    domain.LabelReviewing,
 			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
 				processor.On("Configure", mock.Anything).Return(nil)
-				processor.On("UpdateLabels", mock.Anything, 999, domain.LabelReviewRequested, domain.LabelReviewing).
+				processor.On("UpdateLabels", mock.Anything, 999, domain.LabelReviewRequested, domain.LabelReviewing).Return(nil)
+				workspace.On("PrepareWorkspace", 999).Return(nil) // Reviewフェーズでもworktree準備
+				tmux.On("SessionExists", "soba-test-repo").Return(true)
+				tmux.On("WindowExists", "soba-test-repo", "issue-999").Return(false, nil)
+				tmux.On("CreateWindow", "soba-test-repo", "issue-999").Return(nil)
+				tmux.On("GetLastPaneIndex", "soba-test-repo", "issue-999").Return(0, nil)
+				tmux.On("SendCommand", "soba-test-repo", "issue-999", 0, `cd /tmp/soba/worktrees/issue-999 && echo "Review"`).Return(nil)
+			},
+			wantErr: false,
+		},
+		{
+			name:         "Error when updating labels",
+			issueNumber:  888,
+			phase:        domain.PhaseReview,
+			currentLabel: domain.LabelReviewRequested,
+			nextLabel:    domain.LabelReviewing,
+			setupMocks: func(tmux *MockTmuxClient, workspace *MockWorkspaceManager, processor *MockIssueProcessorUpdater) {
+				processor.On("Configure", mock.Anything).Return(nil)
+				processor.On("UpdateLabels", mock.Anything, 888, domain.LabelReviewRequested, domain.LabelReviewing).
 					Return(errors.New("failed to update labels"))
 			},
 			wantErr:    true,
