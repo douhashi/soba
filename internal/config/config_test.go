@@ -157,8 +157,8 @@ github:
 		t.Errorf("Default tmux command delay = %v, want 3", cfg.Workflow.TmuxCommandDelay)
 	}
 
-	if cfg.Git.WorktreeBasePath != ".git/soba/worktrees" {
-		t.Errorf("Default git worktree base path = %v, want .git/soba/worktrees", cfg.Git.WorktreeBasePath)
+	if cfg.Git.WorktreeBasePath != "/tmp/soba/worktrees" {
+		t.Errorf("Default git worktree base path = %v, want /tmp/soba/worktrees", cfg.Git.WorktreeBasePath)
 	}
 }
 
@@ -175,8 +175,8 @@ func TestLoadConfigFileNotFound(t *testing.T) {
 	if cfg != nil && cfg.Workflow.Interval != 20 {
 		t.Errorf("Default workflow interval = %v, want 20", cfg.Workflow.Interval)
 	}
-	if cfg != nil && cfg.Git.WorktreeBasePath != ".git/soba/worktrees" {
-		t.Errorf("Default git worktree base path = %v, want .git/soba/worktrees", cfg.Git.WorktreeBasePath)
+	if cfg != nil && cfg.Git.WorktreeBasePath != "/tmp/soba/worktrees" {
+		t.Errorf("Default git worktree base path = %v, want /tmp/soba/worktrees", cfg.Git.WorktreeBasePath)
 	}
 	expectedLogPath := fmt.Sprintf(".soba/logs/soba-%d.log", os.Getpid())
 	if cfg != nil && cfg.Log.OutputPath != expectedLogPath {
@@ -225,7 +225,7 @@ func TestConfigStructFields(t *testing.T) {
 			NotificationsEnabled: true,
 		},
 		Git: GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 		},
 		Phase: PhaseConfig{
 			Plan: PhaseCommand{

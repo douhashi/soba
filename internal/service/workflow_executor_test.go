@@ -154,7 +154,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tmux.On("CreateWindow", "soba-test-repo", "issue-456").Return(nil)
 				// Window was created, so no pane management
 				tmux.On("GetLastPaneIndex", "soba-test-repo", "issue-456").Return(0, nil)
-				tmux.On("SendCommand", "soba-test-repo", "issue-456", 0, `cd .git/soba/worktrees/issue-456 && echo "Planning"`).Return(nil)
+				tmux.On("SendCommand", "soba-test-repo", "issue-456", 0, `cd /tmp/soba/worktrees/issue-456 && echo "Planning"`).Return(nil)
 			},
 			wantErr: false,
 		},
@@ -176,7 +176,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 				tmux.On("CreatePane", "soba-test-repo", "issue-789").Return(nil)
 				tmux.On("ResizePanes", "soba-test-repo", "issue-789").Return(nil)
 				tmux.On("GetLastPaneIndex", "soba-test-repo", "issue-789").Return(2, nil) // 送信用（新しいペイン）
-				tmux.On("SendCommand", "soba-test-repo", "issue-789", 2, `cd .git/soba/worktrees/issue-789 && echo "Implementing"`).Return(nil)
+				tmux.On("SendCommand", "soba-test-repo", "issue-789", 2, `cd /tmp/soba/worktrees/issue-789 && echo "Implementing"`).Return(nil)
 			},
 			wantErr: false,
 		},
@@ -226,7 +226,7 @@ func TestWorkflowExecutor_ExecutePhase(t *testing.T) {
 
 			cfg := &config.Config{
 				Git: config.GitConfig{
-					WorktreeBasePath: ".git/soba/worktrees",
+					WorktreeBasePath: "/tmp/soba/worktrees",
 				},
 				GitHub: config.GitHubConfig{
 					Repository: "test/repo",
@@ -356,13 +356,13 @@ func TestWorkflowExecutor_ExecutePhase_WithWorktreePreparation(t *testing.T) {
 	mockTmux.On("CreateWindow", "soba-test-repo", "issue-1").Return(nil)
 	// Window was created, so no pane management
 	mockTmux.On("GetLastPaneIndex", "soba-test-repo", "issue-1").Return(0, nil)
-	mockTmux.On("SendCommand", "soba-test-repo", "issue-1", 0, `cd .git/soba/worktrees/issue-1 && soba:plan "1"`).Return(nil)
+	mockTmux.On("SendCommand", "soba-test-repo", "issue-1", 0, `cd /tmp/soba/worktrees/issue-1 && soba:plan "1"`).Return(nil)
 
 	executor := NewWorkflowExecutor(mockTmux, mockWorkspace, mockProcessor, logging.NewMockLogger())
 
 	cfg := &config.Config{
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 		},
 		GitHub: config.GitHubConfig{
 			Repository: "test/repo",
@@ -678,7 +678,7 @@ func TestWorkflowExecutor_PrepareWorkspaceWithBaseBranchUpdate(t *testing.T) {
 
 			cfg := &config.Config{
 				Git: config.GitConfig{
-					WorktreeBasePath: ".git/soba/worktrees",
+					WorktreeBasePath: "/tmp/soba/worktrees",
 					BaseBranch:       "main",
 				},
 				GitHub: config.GitHubConfig{

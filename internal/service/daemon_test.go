@@ -42,7 +42,7 @@ func TestNewDaemonServiceWithConfig(t *testing.T) {
 			Interval: 20,
 		},
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 		},
 	}
 

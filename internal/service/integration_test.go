@@ -76,7 +76,7 @@ func TestIntegration_FullWorkflow(t *testing.T) {
 			Repository: "test/repo",
 		},
 		Git: config.GitConfig{
-			WorktreeBasePath: ".git/soba/worktrees",
+			WorktreeBasePath: "/tmp/soba/worktrees",
 		},
 		Workflow: config.WorkflowConfig{
 			Interval: 1,

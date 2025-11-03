@@ -185,7 +185,7 @@ func TestInitCommand(t *testing.T) {
 		assert.Equal(t, "test-owner/test-repo", loadedConfig.GitHub.Repository)
 		assert.Equal(t, 20, loadedConfig.Workflow.Interval)
 		assert.True(t, loadedConfig.Workflow.UseTmux)
-		assert.Equal(t, ".git/soba/worktrees", loadedConfig.Git.WorktreeBasePath)
+		assert.Equal(t, "/tmp/soba/worktrees", loadedConfig.Git.WorktreeBasePath)
 	})
 
 	t.Run("should create GitHub labels when config has repository info", func(t *testing.T) {
