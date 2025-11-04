@@ -40,8 +40,14 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
-		// Execute init
-		err = runInitWithGhCommand(context.Background(), []string{}, nil)
+		// Execute init with mock GhCommand to avoid real GitHub API calls
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
 		require.NoError(t, err)
 
 		// Verify config file was created
@@ -82,8 +88,14 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
-		// Execute init (templates are now embedded)
-		err = runInitWithGhCommand(context.Background(), []string{}, nil)
+		// Execute init (templates are now embedded) with mock GhCommand
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
 		require.NoError(t, err)
 
 		// Verify config file was created
@@ -138,8 +150,14 @@ func TestInitWithGitRepository(t *testing.T) {
 		existingFile := filepath.Join(claudeDir, "plan.md")
 		require.NoError(t, os.WriteFile(existingFile, existingContent, 0644))
 
-		// Execute init (templates are now embedded)
-		err = runInitWithGhCommand(context.Background(), []string{}, nil)
+		// Execute init (templates are now embedded) with mock GhCommand
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
 		require.NoError(t, err)
 
 		// Verify existing file was not overwritten
@@ -181,8 +199,14 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to add remote: %s", string(output))
 
-		// Execute init
-		err = runInitWithGhCommand(context.Background(), []string{}, nil)
+		// Execute init with mock GhCommand to avoid real GitHub API calls
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
 		require.NoError(t, err)
 
 		// Verify config file was created
@@ -218,8 +242,12 @@ func TestInitWithGitRepository(t *testing.T) {
 		output, err = cmd.CombinedOutput()
 		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
 
-		// Execute init - should fail without remote
-		err = runInitWithGhCommand(context.Background(), []string{}, nil)
+		// Execute init - should fail without remote (mock GhCommand won't be called)
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
 
 		// Assert that it fails with proper error message
 		require.Error(t, err)
@@ -237,8 +265,12 @@ func TestInitWithGitRepository(t *testing.T) {
 		defer os.Chdir(oldDir)
 		require.NoError(t, os.Chdir(tempDir))
 
-		// Execute init
-		err := runInitWithGhCommand(context.Background(), []string{}, nil)
+		// Execute init with mock GhCommand to avoid real GitHub API calls
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+		}
+		err := runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
 
 		// Should fail with validation error
 		assert.Error(t, err)
