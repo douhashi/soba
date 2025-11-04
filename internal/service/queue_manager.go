@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sort"
 	"strings"
 
 	"github.com/douhashi/soba/internal/infra/github"
@@ -54,8 +55,8 @@ func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Iss
 		return nil
 	}
 
-	// 3. 最小番号のIssueを選択
-	targetIssue := q.selectMinimumIssue(todoIssues)
+	// 3. 優先度順で最適なIssueを選択
+	targetIssue := q.selectPriorityIssue(todoIssues)
 
 	// 4. ラベル変更（soba:todo → soba:queued）
 	q.logger.Info(ctx, "Enqueueing issue", logging.Field{Key: "issue", Value: targetIssue.Number})
@@ -195,4 +196,57 @@ func (q *QueueManager) hasSobaLabel(issue github.Issue) bool {
 		}
 	}
 	return false
+}
+
+// getPriority はIssueの優先度を判定する（0:高、1:通常、2:低）
+func (q *QueueManager) getPriority(issue github.Issue) int {
+	hasHigh := false
+	hasLow := false
+
+	for _, label := range issue.Labels {
+		if label.Name == "soba:todo:high" {
+			hasHigh = true
+		} else if label.Name == "soba:todo:low" {
+			hasLow = true
+		}
+	}
+
+	// 複数の優先度ラベルがある場合は最高優先度を採用
+	if hasHigh {
+		return 0
+	}
+	if hasLow {
+		return 2
+	}
+	return 1 // デフォルトは通常優先度
+}
+
+// sortByPriority はIssueを優先度順にソートする
+func (q *QueueManager) sortByPriority(issues []github.Issue) []github.Issue {
+	sorted := make([]github.Issue, len(issues))
+	copy(sorted, issues)
+
+	sort.Slice(sorted, func(i, j int) bool {
+		priorityI := q.getPriority(sorted[i])
+		priorityJ := q.getPriority(sorted[j])
+
+		if priorityI != priorityJ {
+			return priorityI < priorityJ // 優先度が高いほど値が小さい
+		}
+
+		// 同じ優先度の場合はIssue番号順
+		return sorted[i].Number < sorted[j].Number
+	})
+
+	return sorted
+}
+
+// selectPriorityIssue は優先度を考慮して最適なIssueを選択する
+func (q *QueueManager) selectPriorityIssue(issues []github.Issue) *github.Issue {
+	if len(issues) == 0 {
+		return nil
+	}
+
+	sorted := q.sortByPriority(issues)
+	return &sorted[0]
 }
