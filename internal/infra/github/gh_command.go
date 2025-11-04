@@ -167,6 +167,16 @@ func GetSobaLabels() []CreateLabelRequest {
 			Description: "New issue awaiting processing",
 		},
 		{
+			Name:        "soba:todo:high",
+			Color:       "d73a4a",
+			Description: "High priority task",
+		},
+		{
+			Name:        "soba:todo:low",
+			Color:       "cfd3d7",
+			Description: "Low priority task",
+		},
+		{
 			Name:        "soba:queued",
 			Color:       "fbca04",
 			Description: "Selected for processing",
