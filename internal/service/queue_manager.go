@@ -58,9 +58,9 @@ func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Iss
 	// 3. 優先度順で最適なIssueを選択
 	targetIssue := q.selectPriorityIssue(todoIssues)
 
-	// 4. ラベル変更（soba:todo → soba:queued）
+	// 4. ラベル変更（soba:todo系 → soba:queued）
 	q.logger.Info(ctx, "Enqueueing issue", logging.Field{Key: "issue", Value: targetIssue.Number})
-	err := q.updateLabels(ctx, targetIssue.Number, "soba:todo", "soba:queued")
+	err := q.updateTodoLabelsToQueued(ctx, targetIssue)
 	if err != nil {
 		q.logger.Info(ctx, "Queue management completed",
 			logging.Field{Key: "result", Value: "failed"},
@@ -77,8 +77,11 @@ func (q *QueueManager) EnqueueNextIssue(ctx context.Context, issues []github.Iss
 // hasActiveTask はアクティブなタスクがあるかチェック
 func (q *QueueManager) hasActiveTask(issues []github.Issue) bool {
 	for _, issue := range issues {
-		if q.hasSobaLabel(issue) && !q.hasLabel(issue, "soba:todo") {
-			return true // soba:todo以外のsobaラベルがある
+		if q.hasSobaLabel(issue) &&
+			!q.hasLabel(issue, "soba:todo") &&
+			!q.hasLabel(issue, "soba:todo:high") &&
+			!q.hasLabel(issue, "soba:todo:low") {
+			return true // soba:todo系以外のsobaラベルがある
 		}
 	}
 	return false
@@ -88,7 +91,10 @@ func (q *QueueManager) hasActiveTask(issues []github.Issue) bool {
 func (q *QueueManager) collectTodoIssues(issues []github.Issue) []github.Issue {
 	var todoIssues []github.Issue
 	for _, issue := range issues {
-		if q.hasLabel(issue, "soba:todo") {
+		// soba:todo, soba:todo:high, soba:todo:low のいずれかがあれば収集
+		if q.hasLabel(issue, "soba:todo") ||
+			q.hasLabel(issue, "soba:todo:high") ||
+			q.hasLabel(issue, "soba:todo:low") {
 			todoIssues = append(todoIssues, issue)
 		}
 	}
@@ -110,69 +116,68 @@ func (q *QueueManager) selectMinimumIssue(issues []github.Issue) *github.Issue {
 	return &minIssue
 }
 
-// updateLabels はラベルを更新する（削除→追加）
-func (q *QueueManager) updateLabels(ctx context.Context, issueNumber int, removeLabel, addLabel string) error {
-	q.logger.Info(ctx, "Updating labels for queue management",
-		logging.Field{Key: "issue", Value: issueNumber},
-		logging.Field{Key: "remove", Value: removeLabel},
-		logging.Field{Key: "add", Value: addLabel},
+// updateTodoLabelsToQueued は todo系ラベルを削除して soba:queued を追加する
+func (q *QueueManager) updateTodoLabelsToQueued(ctx context.Context, issue *github.Issue) error {
+	q.logger.Info(ctx, "Updating todo labels to queued",
+		logging.Field{Key: "issue", Value: issue.Number},
 	)
 
-	// 古いラベルを削除
-	if removeLabel != "" {
-		if err := q.client.RemoveLabelFromIssue(ctx, q.owner, q.repo, issueNumber, removeLabel); err != nil {
-			// エラーメッセージを解析して、ラベルが存在しない場合は警告として扱う
-			errMsg := err.Error()
-			if strings.Contains(strings.ToLower(errMsg), "not found") ||
-				strings.Contains(strings.ToLower(errMsg), "404") ||
-				strings.Contains(strings.ToLower(errMsg), "label does not exist") {
-				q.logger.Warn(ctx, "Label not found on issue, skipping removal",
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: removeLabel},
-				)
-				// ラベルが存在しない場合はエラーとせず、処理を続行
+	// todo系のラベルを削除
+	todoLabels := []string{"soba:todo", "soba:todo:high", "soba:todo:low"}
+	for _, label := range todoLabels {
+		if q.hasLabel(*issue, label) {
+			if err := q.client.RemoveLabelFromIssue(ctx, q.owner, q.repo, issue.Number, label); err != nil {
+				// エラーメッセージを解析して、ラベルが存在しない場合は警告として扱う
+				errMsg := err.Error()
+				if strings.Contains(strings.ToLower(errMsg), "not found") ||
+					strings.Contains(strings.ToLower(errMsg), "404") ||
+					strings.Contains(strings.ToLower(errMsg), "label does not exist") {
+					q.logger.Warn(ctx, "Label not found on issue, skipping removal",
+						logging.Field{Key: "issue", Value: issue.Number},
+						logging.Field{Key: "label", Value: label},
+					)
+					// ラベルが存在しない場合はエラーとせず、処理を続行
+				} else {
+					q.logger.Error(ctx, "Failed to remove label",
+						logging.Field{Key: "error", Value: err.Error()},
+						logging.Field{Key: "issue", Value: issue.Number},
+						logging.Field{Key: "label", Value: label},
+					)
+					return errors.WrapInternal(err, "failed to remove label")
+				}
 			} else {
-				q.logger.Error(ctx, "Failed to remove label",
-					logging.Field{Key: "error", Value: err.Error()},
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: removeLabel},
+				q.logger.Info(ctx, "Successfully removed label from issue",
+					logging.Field{Key: "issue", Value: issue.Number},
+					logging.Field{Key: "label", Value: label},
 				)
-				return errors.WrapInternal(err, "failed to remove label")
 			}
-		} else {
-			q.logger.Info(ctx, "Successfully removed label from issue",
-				logging.Field{Key: "issue", Value: issueNumber},
-				logging.Field{Key: "label", Value: removeLabel},
-			)
 		}
 	}
 
-	// 新しいラベルを追加
-	if addLabel != "" {
-		if err := q.client.AddLabelToIssue(ctx, q.owner, q.repo, issueNumber, addLabel); err != nil {
-			// エラーメッセージを解析して、既にラベルが存在する場合は警告として扱う
-			errMsg := err.Error()
-			if strings.Contains(strings.ToLower(errMsg), "already exists") ||
-				strings.Contains(strings.ToLower(errMsg), "label already added") {
-				q.logger.Warn(ctx, "Label already exists on issue",
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: addLabel},
-				)
-				// 既にラベルが存在する場合もエラーとせず、成功として扱う
-			} else {
-				q.logger.Error(ctx, "Failed to add label",
-					logging.Field{Key: "error", Value: err.Error()},
-					logging.Field{Key: "issue", Value: issueNumber},
-					logging.Field{Key: "label", Value: addLabel},
-				)
-				return errors.WrapInternal(err, "failed to add label")
-			}
-		} else {
-			q.logger.Info(ctx, "Successfully added label to issue",
-				logging.Field{Key: "issue", Value: issueNumber},
-				logging.Field{Key: "label", Value: addLabel},
+	// soba:queued を追加
+	if err := q.client.AddLabelToIssue(ctx, q.owner, q.repo, issue.Number, "soba:queued"); err != nil {
+		// エラーメッセージを解析して、既にラベルが存在する場合は警告として扱う
+		errMsg := err.Error()
+		if strings.Contains(strings.ToLower(errMsg), "already exists") ||
+			strings.Contains(strings.ToLower(errMsg), "label already added") {
+			q.logger.Warn(ctx, "Label already exists on issue",
+				logging.Field{Key: "issue", Value: issue.Number},
+				logging.Field{Key: "label", Value: "soba:queued"},
 			)
+			// 既にラベルが存在する場合もエラーとせず、成功として扱う
+		} else {
+			q.logger.Error(ctx, "Failed to add label",
+				logging.Field{Key: "error", Value: err.Error()},
+				logging.Field{Key: "issue", Value: issue.Number},
+				logging.Field{Key: "label", Value: "soba:queued"},
+			)
+			return errors.WrapInternal(err, "failed to add label")
 		}
+	} else {
+		q.logger.Info(ctx, "Successfully added label to issue",
+			logging.Field{Key: "issue", Value: issue.Number},
+			logging.Field{Key: "label", Value: "soba:queued"},
+		)
 	}
 
 	return nil
