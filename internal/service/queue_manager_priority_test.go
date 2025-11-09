@@ -249,6 +249,7 @@ func TestQueueManager_EnqueueNextIssue_WithPriority(t *testing.T) {
 			expectedIssueNum: 2, // 高優先度のIssue
 			setupMock: func(m *MockQueueGitHubClient, issueNum int) {
 				m.On("RemoveLabelFromIssue", mock.Anything, "owner", "repo", issueNum, "soba:todo").Return(nil)
+				m.On("RemoveLabelFromIssue", mock.Anything, "owner", "repo", issueNum, "soba:todo:high").Return(nil)
 				m.On("AddLabelToIssue", mock.Anything, "owner", "repo", issueNum, "soba:queued").Return(nil)
 			},
 			shouldEnqueue: true,
@@ -272,6 +273,7 @@ func TestQueueManager_EnqueueNextIssue_WithPriority(t *testing.T) {
 			expectedIssueNum: 3, // 高優先度の中で最小番号
 			setupMock: func(m *MockQueueGitHubClient, issueNum int) {
 				m.On("RemoveLabelFromIssue", mock.Anything, "owner", "repo", issueNum, "soba:todo").Return(nil)
+				m.On("RemoveLabelFromIssue", mock.Anything, "owner", "repo", issueNum, "soba:todo:high").Return(nil)
 				m.On("AddLabelToIssue", mock.Anything, "owner", "repo", issueNum, "soba:queued").Return(nil)
 			},
 			shouldEnqueue: true,
@@ -291,6 +293,7 @@ func TestQueueManager_EnqueueNextIssue_WithPriority(t *testing.T) {
 			expectedIssueNum: 5, // 低優先度の中で最小番号
 			setupMock: func(m *MockQueueGitHubClient, issueNum int) {
 				m.On("RemoveLabelFromIssue", mock.Anything, "owner", "repo", issueNum, "soba:todo").Return(nil)
+				m.On("RemoveLabelFromIssue", mock.Anything, "owner", "repo", issueNum, "soba:todo:low").Return(nil)
 				m.On("AddLabelToIssue", mock.Anything, "owner", "repo", issueNum, "soba:queued").Return(nil)
 			},
 			shouldEnqueue: true,
