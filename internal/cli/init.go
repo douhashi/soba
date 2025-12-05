@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
@@ -126,6 +127,13 @@ func runInitWithGhCommand(ctx context.Context, _ []string, ghCmd GhCommandInterf
 		log.Warn(ctx, "Failed to copy Claude command templates", logging.Field{Key: "error", Value: err.Error()})
 	}
 
+	// Ensure .gitignore entries for soba dynamic files
+	gitignorePath := filepath.Join(currentDir, ".gitignore")
+	if err := ensureGitignoreEntries(gitignorePath); err != nil {
+		// Log the error as warning but don't fail the init command
+		log.Warn(ctx, "Failed to update .gitignore", logging.Field{Key: "error", Value: err.Error()})
+	}
+
 	return nil
 }
 
@@ -215,5 +223,115 @@ func copyClaudeCommandTemplates() error {
 		return fmt.Errorf("failed to copy Claude command templates: %w", err)
 	}
 
+	return nil
+}
+
+// ensureGitignoreEntries ensures .soba/soba.pid and .soba/logs/ are in .gitignore
+func ensureGitignoreEntries(gitignorePath string) error {
+	entries := []string{".soba/soba.pid", ".soba/logs/"}
+
+	existingLines, fileExists, err := readGitignoreFile(gitignorePath)
+	if err != nil {
+		return err
+	}
+
+	linesToAdd := findMissingEntries(existingLines, entries)
+	if len(linesToAdd) == 0 {
+		return nil
+	}
+
+	content := buildGitignoreContent(existingLines, linesToAdd, fileExists)
+	return writeGitignoreFile(gitignorePath, content)
+}
+
+// readGitignoreFile reads the .gitignore file and returns its lines and existence status
+func readGitignoreFile(gitignorePath string) ([]string, bool, error) {
+	file, err := os.Open(gitignorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, false, nil
+		}
+		if os.IsPermission(err) {
+			return nil, false, errors.WrapInternal(err, "permission denied: cannot read .gitignore")
+		}
+		return nil, false, errors.WrapInternal(err, "failed to open .gitignore")
+	}
+	defer file.Close()
+
+	var existingLines []string // nolint:prealloc
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		existingLines = append(existingLines, scanner.Text())
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, false, errors.WrapInternal(err, "failed to read .gitignore")
+	}
+
+	return existingLines, true, nil
+}
+
+// findMissingEntries returns entries that don't exist in the current lines
+func findMissingEntries(existingLines, entries []string) []string {
+	linesToAdd := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		found := false
+		for _, line := range existingLines {
+			if strings.TrimSpace(line) == entry {
+				found = true
+				break
+			}
+		}
+		if !found {
+			linesToAdd = append(linesToAdd, entry)
+		}
+	}
+	return linesToAdd
+}
+
+// buildGitignoreContent builds the complete .gitignore content
+func buildGitignoreContent(existingLines, linesToAdd []string, fileExists bool) string {
+	var content strings.Builder
+
+	if fileExists {
+		for _, line := range existingLines {
+			content.WriteString(line)
+			content.WriteString("\n")
+		}
+	}
+
+	if len(linesToAdd) > 0 {
+		addSobaSection(&content, existingLines, linesToAdd, fileExists)
+	}
+
+	return content.String()
+}
+
+// addSobaSection adds the soba section to the gitignore content
+func addSobaSection(content *strings.Builder, existingLines, linesToAdd []string, fileExists bool) {
+	if fileExists && len(existingLines) > 0 {
+		lastLine := ""
+		if len(existingLines) > 0 {
+			lastLine = existingLines[len(existingLines)-1]
+		}
+		if lastLine != "" {
+			content.WriteString("\n")
+		}
+	}
+
+	content.WriteString("# Soba generated files\n")
+	for _, entry := range linesToAdd {
+		content.WriteString(entry)
+		content.WriteString("\n")
+	}
+}
+
+// writeGitignoreFile writes the content to the .gitignore file
+func writeGitignoreFile(gitignorePath, content string) error {
+	if err := os.WriteFile(gitignorePath, []byte(content), 0600); err != nil {
+		if os.IsPermission(err) {
+			return errors.WrapInternal(err, "permission denied: cannot write .gitignore")
+		}
+		return errors.WrapInternal(err, "failed to write .gitignore")
+	}
 	return nil
 }

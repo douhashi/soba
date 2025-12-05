@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -406,6 +407,198 @@ func (m *MockGhCommand) CreateSobaLabels(ctx context.Context, owner, repo string
 		return 0, 0, m.createError
 	}
 	return m.created, m.skipped, nil
+}
+
+func TestEnsureGitignoreEntries(t *testing.T) {
+	t.Run("should create new .gitignore with entries", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert
+		assert.NoError(t, err)
+		assert.FileExists(t, gitignorePath)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		assert.Contains(t, string(content), ".soba/soba.pid")
+		assert.Contains(t, string(content), ".soba/logs/")
+	})
+
+	t.Run("should add entries to existing .gitignore", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		existingContent := `# Existing entries
+node_modules/
+*.log
+dist/
+`
+		require.NoError(t, os.WriteFile(gitignorePath, []byte(existingContent), 0644))
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		// Verify existing content is preserved
+		assert.Contains(t, contentStr, "node_modules/")
+		assert.Contains(t, contentStr, "*.log")
+		assert.Contains(t, contentStr, "dist/")
+
+		// Verify new entries are added
+		assert.Contains(t, contentStr, ".soba/soba.pid")
+		assert.Contains(t, contentStr, ".soba/logs/")
+	})
+
+	t.Run("should not add duplicate entries", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		existingContent := `# Existing entries
+.soba/soba.pid
+.soba/logs/
+node_modules/
+`
+		require.NoError(t, os.WriteFile(gitignorePath, []byte(existingContent), 0644))
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		// Count occurrences
+		assert.Equal(t, 1, strings.Count(contentStr, ".soba/soba.pid"))
+		assert.Equal(t, 1, strings.Count(contentStr, ".soba/logs/"))
+	})
+
+	t.Run("should add missing entries when only one exists", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		existingContent := `# Existing entries
+.soba/soba.pid
+node_modules/
+`
+		require.NoError(t, os.WriteFile(gitignorePath, []byte(existingContent), 0644))
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		// Verify both entries exist
+		assert.Contains(t, contentStr, ".soba/soba.pid")
+		assert.Contains(t, contentStr, ".soba/logs/")
+
+		// Verify no duplicates
+		assert.Equal(t, 1, strings.Count(contentStr, ".soba/soba.pid"))
+	})
+
+	t.Run("should handle permission errors", func(t *testing.T) {
+		// Skip if running as root
+		if os.Geteuid() == 0 {
+			t.Skip("Test cannot run as root")
+		}
+
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		// Create file with read-only permission
+		require.NoError(t, os.WriteFile(gitignorePath, []byte("existing content\n"), 0444))
+		defer os.Chmod(gitignorePath, 0644) // Restore permission for cleanup
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert - should return error
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "permission")
+	})
+
+	t.Run("should handle directory permission errors", func(t *testing.T) {
+		// Skip if running as root
+		if os.Geteuid() == 0 {
+			t.Skip("Test cannot run as root")
+		}
+
+		// Setup
+		tempDir := t.TempDir()
+
+		// Create directory with no write permission
+		require.NoError(t, os.Chmod(tempDir, 0555))
+		defer os.Chmod(tempDir, 0755) // Restore permission for cleanup
+
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert - should return error
+		assert.Error(t, err)
+	})
+
+	t.Run("should add soba section header", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		// Verify soba section header is added
+		assert.Contains(t, contentStr, "# Soba generated files")
+	})
+
+	t.Run("should preserve trailing newline", func(t *testing.T) {
+		// Setup
+		tempDir := t.TempDir()
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+
+		existingContent := "node_modules/\n"
+		require.NoError(t, os.WriteFile(gitignorePath, []byte(existingContent), 0644))
+
+		// Execute
+		err := ensureGitignoreEntries(gitignorePath)
+
+		// Assert
+		assert.NoError(t, err)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+
+		// Verify file ends with newline
+		assert.True(t, strings.HasSuffix(string(content), "\n"))
+	})
 }
 
 func TestCopyClaudeCommandTemplates(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -279,5 +280,170 @@ func TestInitWithGitRepository(t *testing.T) {
 		// Verify config file was NOT created
 		configPath := filepath.Join(tempDir, ".soba", "config.yml")
 		assert.NoFileExists(t, configPath)
+	})
+
+	t.Run("should create .gitignore with soba entries on init", func(t *testing.T) {
+		// Setup: Create a temporary directory with git repository
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository
+		cmd := exec.Command("git", "init")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
+		// Add remote
+		cmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add remote: %s", string(output))
+
+		// Execute init
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
+		require.NoError(t, err)
+
+		// Verify .gitignore was created with correct entries
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+		assert.FileExists(t, gitignorePath)
+
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		assert.Contains(t, contentStr, ".soba/soba.pid")
+		assert.Contains(t, contentStr, ".soba/logs/")
+		assert.Contains(t, contentStr, "# Soba generated files")
+	})
+
+	t.Run("should append to existing .gitignore on init", func(t *testing.T) {
+		// Setup: Create a temporary directory with git repository
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Create existing .gitignore
+		existingContent := `# Existing gitignore
+node_modules/
+dist/
+*.log
+`
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+		require.NoError(t, os.WriteFile(gitignorePath, []byte(existingContent), 0644))
+
+		// Initialize git repository
+		cmd := exec.Command("git", "init")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
+		// Add remote
+		cmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add remote: %s", string(output))
+
+		// Execute init
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
+		require.NoError(t, err)
+
+		// Verify .gitignore contains both existing and new entries
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		// Check existing entries are preserved
+		assert.Contains(t, contentStr, "node_modules/")
+		assert.Contains(t, contentStr, "dist/")
+		assert.Contains(t, contentStr, "*.log")
+
+		// Check new entries are added
+		assert.Contains(t, contentStr, ".soba/soba.pid")
+		assert.Contains(t, contentStr, ".soba/logs/")
+		assert.Contains(t, contentStr, "# Soba generated files")
+	})
+
+	t.Run("should not duplicate .gitignore entries on multiple init calls", func(t *testing.T) {
+		// Setup: Create a temporary directory with git repository
+		tempDir := t.TempDir()
+		oldDir, _ := os.Getwd()
+		defer os.Chdir(oldDir)
+		require.NoError(t, os.Chdir(tempDir))
+
+		// Initialize git repository
+		cmd := exec.Command("git", "init")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to init git repository: %s", string(output))
+
+		// Configure git user for CI environment
+		cmd = exec.Command("git", "config", "user.email", "test@example.com")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.email: %s", string(output))
+
+		cmd = exec.Command("git", "config", "user.name", "Test User")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to configure git user.name: %s", string(output))
+
+		// Add remote
+		cmd = exec.Command("git", "remote", "add", "origin", "https://github.com/test-owner/test-repo.git")
+		output, err = cmd.CombinedOutput()
+		require.NoError(t, err, "Failed to add remote: %s", string(output))
+
+		// Execute init first time
+		mockGhCmd := &MockGhCommand{
+			available:     true,
+			authenticated: true,
+			created:       11,
+			skipped:       0,
+		}
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
+		require.NoError(t, err)
+
+		// Delete the config file to allow second init
+		configPath := filepath.Join(tempDir, ".soba", "config.yml")
+		require.NoError(t, os.Remove(configPath))
+
+		// Execute init second time
+		err = runInitWithGhCommand(context.Background(), []string{}, mockGhCmd)
+		require.NoError(t, err)
+
+		// Verify .gitignore doesn't have duplicate entries
+		gitignorePath := filepath.Join(tempDir, ".gitignore")
+		content, err := os.ReadFile(gitignorePath)
+		require.NoError(t, err)
+		contentStr := string(content)
+
+		// Count occurrences - should be exactly 1 each
+		assert.Equal(t, 1, strings.Count(contentStr, ".soba/soba.pid"))
+		assert.Equal(t, 1, strings.Count(contentStr, ".soba/logs/"))
 	})
 }
